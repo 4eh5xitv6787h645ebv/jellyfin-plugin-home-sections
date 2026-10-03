@@ -232,15 +232,15 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 
                     if (sectionType != null)
                     {
-                        int instanceCount = 1;
-                        if (sectionType.Limit > 1)
-                        {
-                            Random rnd = new Random();
-                            instanceCount = rnd.Next(sectionSettings.LowerLimit, sectionSettings.UpperLimit);
-                        }
-
                         try
                         {
+                            int instanceCount = 1;
+                            if (sectionType.Limit > 1)
+                            {
+                                Random rnd = new Random();
+                                instanceCount = rnd.Next(sectionSettings.LowerLimit, sectionSettings.UpperLimit);
+                            }
+
                             IEnumerable<IHomeScreenSection> instances = sectionType.CreateInstances(userId, instanceCount);
 
                             foreach (IHomeScreenSection sectionInstance in instances)
