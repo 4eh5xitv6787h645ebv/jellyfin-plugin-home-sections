@@ -62,6 +62,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             {
                 return false;
             }
+            if (cachedInfo.ContentType != "image/jpeg")
+            {
+                CleanupCacheEntry(cacheKey);
+                return false;
+            }
             return cachedInfo.ExpiresAt > DateTime.UtcNow && File.Exists(cachedInfo.FilePath);
         }
 
@@ -119,13 +124,13 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 }
 
                 byte[] imageData = await response.Content.ReadAsByteArrayAsync();
-                string contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
                 byte[] processedImageData = ProcessImage(imageData);
-                if (processedImageData.Length > 0)
+                if (processedImageData.Length == 0)
                 {
-                    imageData = processedImageData;
-                    contentType = "image/jpeg";
+                    return null;
                 }
+                imageData = processedImageData;
+                string contentType = "image/jpeg";
                 
                 string filePath = SaveImageToDisk(cacheKey, imageData, contentType);
                 StoreCacheInfo(cacheKey, sourceUrl, filePath, contentType, cacheTimeoutSeconds);
@@ -171,6 +176,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             if (!m_imageCache.TryGetValue(cacheKey, out CachedImageDto? cachedInfo))
             {
                 m_logger.LogDebug("Cache miss for key {CacheKey}", cacheKey);
+                return (null, null);
+            }
+            if (cachedInfo.ContentType != "image/jpeg")
+            {
+                CleanupCacheEntry(cacheKey);
                 return (null, null);
             }
             if (cachedInfo.ExpiresAt < DateTime.UtcNow)
@@ -262,7 +272,14 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
         {
             try
             {
-                using SKBitmap? originalBitmap = SKBitmap.Decode(imageData);
+                using SKData data = SKData.CreateCopy(imageData);
+                using SKCodec? codec = SKCodec.Create(data);
+                if (codec == null)
+                {
+                    m_logger.LogWarning("Image format is not a supported raster image");
+                    return Array.Empty<byte>();
+                }
+                using SKBitmap? originalBitmap = SKBitmap.Decode(codec);
                 if (originalBitmap == null)
                 {
                     m_logger.LogWarning("Failed to decode image for processing");

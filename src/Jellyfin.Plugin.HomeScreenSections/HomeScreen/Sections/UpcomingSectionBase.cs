@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Jellyfin.Plugin.HomeScreenSections.Configuration;
 using Jellyfin.Plugin.HomeScreenSections.Helpers;
 using Jellyfin.Plugin.HomeScreenSections.Library;
@@ -170,14 +172,16 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
             return primaryText;
         }
 
-        protected static string GetRandomBgColor()
+        protected static string GetFallbackPosterUrl(int width, int height, string text)
         {
-            return $"{Random.Shared.Next(0, 128):X2}{Random.Shared.Next(0, 128):X2}{Random.Shared.Next(0, 128):X2}";
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+            string color = $"{hash[0] & 127:X2}{hash[1] & 127:X2}{hash[2] & 127:X2}";
+            return $"https://placehold.co/{width}x{height}/{color}/FFF/png?text={Uri.EscapeDataString(text)}";
         }
 
         protected virtual string GetFallbackCoverUrl(T missingItem)
         {
-            return $"https://placehold.co/250x400/{GetRandomBgColor()}/FFF?text={Uri.EscapeDataString("Unknown Item\nImage Not Found")}";
+            return GetFallbackPosterUrl(250, 400, "Unknown Item\nImage Not Found");
         }
         
         protected string GetCachedImageUrl(string? sourceUrl)

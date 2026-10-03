@@ -69,7 +69,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming
 
         protected override string GetFallbackCoverUrl(RadarrCalendarDto missingItem)
         {
-            return $"https://placehold.co/250x400/{GetRandomBgColor()}/FFF?text={Uri.EscapeDataString($"{missingItem.Title}\nImage Not Found")}";
+            return GetFallbackPosterUrl(250, 400, $"{missingItem.Title}\nImage Not Found");
         }
 
         protected override BaseItemDto CreateDto(RadarrCalendarDto calendarItem, PluginConfiguration config)
