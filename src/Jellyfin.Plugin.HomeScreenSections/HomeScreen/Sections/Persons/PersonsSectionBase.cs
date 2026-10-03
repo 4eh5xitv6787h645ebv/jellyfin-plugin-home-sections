@@ -64,12 +64,14 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Persons
                 }
             };
             Guid personId = Guid.Parse(payload.AdditionalData ?? Guid.Empty.ToString());
+            bool? isPlayed = GetIsPlayedFilter();
             
             VirtualFolderInfo[] folders = m_libraryManager.GetVirtualFolders()
                 .FilterToUserPermitted(m_libraryManager, user);
 
             IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery(user)
             {
+                IsPlayed = isPlayed,
                 PersonIds = new[] { personId },
                 PersonTypes = PersonTypes.ToArray(),
                 OrderBy = new[] { (ItemSortBy.Random, SortOrder.Ascending) },
@@ -90,6 +92,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Persons
             return new QueryResult<BaseItemDto>(m_dtoService.GetBaseItemDtos(personItems, dtoOptions, user));
         }
 
+        private bool? GetIsPlayedFilter()
+        {
+            SectionSettings? sectionSettings = HomeScreenSectionsPlugin.Instance?.Configuration.SectionSettings.FirstOrDefault(x => x.SectionId == Section);
+            return sectionSettings?.HideWatchedItems == true ? false : null;
+        }
+
         public IEnumerable<IHomeScreenSection> CreateInstances(Guid? userId, int instanceCount)
         {
             User? user = m_userManager.GetUserById(userId ?? Guid.Empty);
@@ -103,11 +111,13 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Persons
             
             VirtualFolderInfo[] folders = m_libraryManager.GetVirtualFolders()
                 .FilterToUserPermitted(m_libraryManager, user);
+            bool? isPlayed = user != null ? GetIsPlayedFilter() : null;
 
             foreach (Person person in people)
             {
                 IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery(user)
                 {
+                    IsPlayed = isPlayed,
                     PersonIds = new[] { person.Id },
                     PersonTypes = PersonTypes.ToArray(),
                     IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
