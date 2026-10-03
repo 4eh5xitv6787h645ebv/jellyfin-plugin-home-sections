@@ -40,7 +40,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             // Make sure that it's flagged as being used, even if we don't return anything here the page is still active
             // as we've received a request for it.
             userSectionsData.LastAccessed = DateTime.UtcNow;
-            m_dataCache.PageHashExpiry.TryUpdate(pageHash, DateTime.UtcNow.AddHours(1), m_dataCache.PageHashExpiry[pageHash]); // TODO: In a future update we should make this configurable.
+            m_dataCache.PageHashExpiry.TryUpdate(pageHash, DateTime.UtcNow.AddHours(1), m_dataCache.PageHashExpiry.GetValueOrDefault(pageHash)); // TODO: In a future update we should make this configurable.
             
             // Check if the userSectionsData has the data we're after
             int[] orderedKeys = userSectionsData.OrderedSections.Keys.OrderBy(x => x).ToArray();
@@ -97,10 +97,10 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
         public List<HomeScreenSectionInfo>? MonitorLiveUpdatedSectionsForUser(Guid userId, string? language, int page, int? pageSize = null, Guid? pageHash = null)
         {
             // Kick off the task to remove the expired "temp" user caches to avoid a memory leak.
-            Task.Run(() => ClearExpiredUserCaches(userId));
+            Task.Run(() => ClearExpiredUserCaches());
 
-            // If the sections have been requested with a page hash that wasn't generated for this user, generate a new one.
-            if (pageHash.HasValue && !DoesPageBelongToUser(pageHash.Value, userId))
+            // Keep the client's page hash unless another user already owns it.
+            if (pageHash.HasValue && !TryClaimPageHash(pageHash.Value, userId))
             {
                 pageHash = GeneratePageHash(userId);
             }
@@ -286,16 +286,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             return info;
         }
 
-        private async Task ClearExpiredUserCaches(Guid userId)
+        private async Task ClearExpiredUserCaches()
         {
             await Task.Yield();
             
-            Guid[] userPageHashes = m_dataCache.PageHashOwnerIds
-                .Where(x => x.Value == userId)
-                .Select(x => x.Key)
-                .ToArray();
             Guid[] expiredPageHashes = m_dataCache.PageHashExpiry
-                .Where(x => userPageHashes.Any(y => y == x.Key))
                 .Where(x => x.Value < DateTime.UtcNow)
                 .Select(x => x.Key)
                 .ToArray();
@@ -303,6 +298,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             foreach (Guid pageHash in expiredPageHashes)
             {
                 m_dataCache.Cache.TryRemove(pageHash, out _);
+                m_dataCache.PageHashOwnerIds.TryRemove(pageHash, out _);
+                m_dataCache.PageHashExpiry.TryRemove(pageHash, out _);
             }
         }
 
@@ -327,6 +324,17 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             return activePageHashes.First();
         }
         
+        private bool TryClaimPageHash(Guid pageHash, Guid userId)
+        {
+            if (m_dataCache.PageHashOwnerIds.TryAdd(pageHash, userId))
+            {
+                m_dataCache.PageHashExpiry.TryAdd(pageHash, DateTime.UtcNow.AddHours(1)); // TODO: In a future update we should make this configurable.
+                return true;
+            }
+
+            return DoesPageBelongToUser(pageHash, userId);
+        }
+
         private bool DoesPageBelongToUser(Guid pageHash, Guid userId)
         {
             return m_dataCache.PageHashOwnerIds.TryGetValue(pageHash, out Guid ownerId) && ownerId == userId;
