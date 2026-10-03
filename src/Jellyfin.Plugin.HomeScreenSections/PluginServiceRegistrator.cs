@@ -8,6 +8,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.HomeScreenSections
 {
@@ -32,6 +33,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
             serviceCollection.AddSingleton<ITranslationManager, TranslationManager>();
             serviceCollection.AddSingleton<IHomeScreenManager, HomeScreenManager>(services =>
             {
+                ILogger<HomeScreenManager> logger = services.GetRequiredService<ILogger<HomeScreenManager>>();
                 IApplicationPaths appPaths = services.GetRequiredService<IApplicationPaths>();
                 
                 HomeScreenManager homeScreenManager = ActivatorUtilities.CreateInstance<HomeScreenManager>(services);
@@ -45,13 +47,39 @@ namespace Jellyfin.Plugin.HomeScreenSections
 
                 foreach (string extraDll in extraDlls)
                 {
-                    Assembly extraPluginAssembly = Assembly.LoadFile(extraDll);
-
-                    Type[] homeScreenSectionTypes = extraPluginAssembly.GetTypes().Where(x => x.IsAssignableTo(typeof(IHomeScreenSection))).ToArray();
-
-                    foreach (Type homeScreenSectionType in homeScreenSectionTypes)
+                    Type[] extensionTypes;
+                    try
                     {
-                        homeScreenManager.RegisterResultsDelegate(homeScreenSectionType);
+                        Assembly extraPluginAssembly = Assembly.LoadFile(extraDll);
+                        extensionTypes = extraPluginAssembly.GetTypes();
+                    }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        logger.LogWarning(ex, "Unable to load some extension types from {File}; continuing with available types", extraDll);
+                        extensionTypes = ex.Types.OfType<Type>().ToArray();
+                    }
+                    catch (BadImageFormatException ex)
+                    {
+                        logger.LogWarning(ex, "Unable to load extension assembly {File}", extraDll);
+                        continue;
+                    }
+                    catch (IOException ex)
+                    {
+                        logger.LogWarning(ex, "Unable to load extension assembly {File}", extraDll);
+                        continue;
+                    }
+
+                    foreach (Type homeScreenSectionType in extensionTypes.Where(x => x.IsClass && !x.IsAbstract && !x.ContainsGenericParameters && x.IsAssignableTo(typeof(IHomeScreenSection))))
+                    {
+                        try
+                        {
+                            homeScreenManager.RegisterResultsDelegate(homeScreenSectionType);
+                        }
+                        // Third-party constructors and section properties can throw arbitrary exceptions.
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Unable to register extension type {Type} from {File}", homeScreenSectionType.FullName, extraDll);
+                        }
                     }
                 }
 
