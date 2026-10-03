@@ -646,7 +646,7 @@
                 const configOptions = template.querySelector('[data-id=pluginConfigurationOptionsContainer]');
 
                 template.querySelector('[data-id=hiddenSectionId]').value = sectionConfig.SectionId;
-                template.querySelector('[data-id=lblSectionName]').innerHTML = sectionInfo.DisplayText;
+                template.querySelector('[data-id=lblSectionName]').textContent = sectionInfo.DisplayText;
 
                 if (sectionInfo.AdminDescription) {
                     const infoIcon = template.querySelector('[data-id=sectionInfoIcon]');

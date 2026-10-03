@@ -61,7 +61,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Library
         FullText,
         Prefix,
         Suffix,
-        Pattern
+        Pattern,
+        None
     }
 
     public class TranslationMetadata
