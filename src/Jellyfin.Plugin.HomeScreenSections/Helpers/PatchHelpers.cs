@@ -72,7 +72,7 @@ public class PatchHelpers
             Guid userId = string.IsNullOrEmpty(userIdString) ? Guid.Empty : Guid.Parse(userIdString);
             
             HomeScreenSectionService hssService = HomeScreenSectionsPlugin.Instance.ServiceProvider.GetRequiredService<HomeScreenSectionService>();
-            List<HomeScreenSectionInfo> sections = hssService.MonitorLiveUpdatedSectionsForUser(userId, "en", 1) ?? new List<HomeScreenSectionInfo>();
+            List<HomeScreenSectionInfo> sections = hssService.MonitorLiveUpdatedSectionsForUser(userId, "en", 1, cancellationToken: controller.HttpContext.RequestAborted).GetAwaiter().GetResult() ?? new List<HomeScreenSectionInfo>();
 
             JArray? sectionsArr = parsedOutput.Value<JObject>("settings")?.Value<JObject>("home")?.Value<JObject>("value")?.Value<JArray>("sections");
 

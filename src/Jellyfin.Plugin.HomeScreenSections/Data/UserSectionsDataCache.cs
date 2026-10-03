@@ -29,6 +29,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.Data
         
         // This list represents a collection of index numbers that are currently being processed
         public ConcurrentDictionary<int, bool> SectionsInProgress { get; set; } = new ConcurrentDictionary<int, bool>();
+
+        // Group completions in order; populated before publication and retained after completion or failure.
+        public SortedDictionary<int, TaskCompletionSource> SectionCompletions { get; } = new SortedDictionary<int, TaskCompletionSource>();
     }
     
     public class IntRange : IEquatable<IntRange>
