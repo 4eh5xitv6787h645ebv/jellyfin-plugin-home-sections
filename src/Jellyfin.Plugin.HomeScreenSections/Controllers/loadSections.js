@@ -402,6 +402,11 @@
         if (page !== null) {
             window.HssPageMeta.Page = page;
         } else {
+            if (window.HssPageMeta) {
+                window.removeEventListener('scroll', window.HssPageMeta.ScrollHandler);
+                clearInterval(window.HssPageMeta.ScrollFixerHandle);
+                window.HssPageMeta.ScrollFixerHandle = undefined;
+            }
             window.HssPageMeta = {
                 UsePagination: hssMeta.PaginationEnabled,
                 Page: 1,
@@ -421,13 +426,18 @@
             };
 
             function hssScrollHandler() {
+                if (!document.body.contains(window.HssPageCache.elem)) {
+                    return;
+                }
                 var scrollPosition = window.scrollY + window.innerHeight;
                 var windowHeight = getDocHeight();
 
                 if (window.HssPageMeta.Finished !== true && window.HssPageMeta.IsLoading !== true && scrollPosition > windowHeight - window.HssPageMeta.ScrollThreshold && window.HssPageMeta.LastScrollHeight < window.scrollY) {
                     window.HssPageMeta.IsLoading = true;
 
-                    document.querySelector('#hssLoadingIndicator').style.display = 'block';
+                    var pageMeta = window.HssPageMeta;
+                    var loadingIndicator = document.querySelector('#hssLoadingIndicator');
+                    loadingIndicator.style.display = 'block';
 
                     // Do the calculation after the scroller is turned on
                     windowHeight = getDocHeight();
@@ -445,15 +455,15 @@
                         }
                     }, 1);
 
-                    _this.loadSections(window.HssPageCache.elem, window.HssPageCache.apiClient, window.HssPageCache.user, window.HssPageCache.userSettings, window.HssPageMeta.Page + 1).then(function () {
-                        document.querySelector('#hssLoadingIndicator').style.display = 'none';
+                    var finishLoading = function () {
+                        loadingIndicator.style.display = 'none';
 
-                        window.HssPageMeta.IsLoading = false;
+                        pageMeta.IsLoading = false;
 
-                        if (window.HssPageMeta.ScrollFixerHandle) {
-                            clearInterval(window.HssPageMeta.ScrollFixerHandle);
-                        }
-                    });
+                        clearInterval(pageMeta.ScrollFixerHandle);
+                        pageMeta.ScrollFixerHandle = undefined;
+                    };
+                    _this.loadSections(window.HssPageCache.elem, window.HssPageCache.apiClient, window.HssPageCache.user, window.HssPageCache.userSettings, window.HssPageMeta.Page + 1).then(finishLoading, finishLoading);
                 }
 
                 function getDocHeight() {
@@ -464,10 +474,6 @@
                         D.body.clientHeight, D.documentElement.clientHeight
                     );
                 }
-            }
-            
-            if (window.HssPageMeta.ScrollHandler !== null) {
-                window.removeEventListener('scroll', window.HssPageMeta.ScrollHandler);
             }
             
             window.HssPageMeta.ScrollHandler = hssScrollHandler;
