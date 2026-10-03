@@ -7,6 +7,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
@@ -152,7 +153,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
                     SeriesPresentationUniqueKey = seriesKey,
                     IncludeItemTypes = new[] { BaseItemKind.Episode },
                     OrderBy = new[] { (ItemSortBy.DateCreated, SortOrder.Descending) },
-                    DtoOptions = dtoOptions,
+                    DtoOptions = new DtoOptions
+                    {
+                        EnableImages = false,
+                        EnableUserData = false,
+                        Fields = Array.Empty<ItemFields>()
+                    },
                     IsMissing = false,
                     IsVirtualItem = false,
                     EnableTotalRecordCount = false,
