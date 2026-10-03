@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
     /// </summary>
     public class HomeScreenManager : IHomeScreenManager
     {
+        private readonly object m_delegatesLock = new object();
         private Dictionary<string, IHomeScreenSection> m_delegates = new Dictionary<string, IHomeScreenSection>();
         private Dictionary<Guid, bool> m_userFeatureEnabledStates = new Dictionary<Guid, bool>();
 
@@ -102,20 +103,27 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         /// <inheritdoc/>
         public IEnumerable<IHomeScreenSection> GetSectionTypes()
         {
-            return m_delegates.Values;
+            lock (m_delegatesLock)
+            {
+                return m_delegates.Values.ToArray();
+            }
         }
 
         public IHomeScreenSection? GetSection(string sectionName)
         {
-            return m_delegates.GetValueOrDefault(sectionName);
+            lock (m_delegatesLock)
+            {
+                return m_delegates.GetValueOrDefault(sectionName);
+            }
         }
 
         /// <inheritdoc/>
         public QueryResult<BaseItemDto> InvokeResultsDelegate(string key, HomeScreenSectionPayload payload, IQueryCollection queryCollection)
         {
-            if (m_delegates.ContainsKey(key))
+            IHomeScreenSection? handler = GetSection(key);
+            if (handler != null)
             {
-                return m_delegates[key].GetResults(payload, queryCollection);
+                return handler.GetResults(payload, queryCollection);
             }
 
             return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
@@ -133,7 +141,10 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         {
             if (handler.Section != null)
             {
-                m_delegates[handler.Section] = handler;
+                lock (m_delegatesLock)
+                {
+                    m_delegates[handler.Section] = handler;
+                }
             }
         }
 
@@ -143,13 +154,16 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
 
             if (handler.Section != null)
             {
-                if (!m_delegates.ContainsKey(handler.Section))
+                lock (m_delegatesLock)
                 {
-                    m_delegates.Add(handler.Section, handler);
-                }
-                else
-                {
-                    throw new Exception($"Section type '{handler.Section}' has already been registered to type '{m_delegates[handler.Section].GetType().FullName}'.");
+                    if (!m_delegates.ContainsKey(handler.Section))
+                    {
+                        m_delegates.Add(handler.Section, handler);
+                    }
+                    else
+                    {
+                        throw new Exception($"Section type '{handler.Section}' has already been registered to type '{m_delegates[handler.Section].GetType().FullName}'.");
+                    }
                 }
             }
         }
