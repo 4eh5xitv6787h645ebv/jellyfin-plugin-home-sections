@@ -75,7 +75,7 @@ The sections that are new for this plugin (and most likely the reason you would 
 ## Installation
 
 ### Prerequisites
-- This plugin is based on at least Jellyfin Version `10.10.7`, with 10.11.x also officially supported.
+- This plugin supports Jellyfin `10.11.x` and `12.x`.
 - The following plugins are required to also be installed, please following their installation guides, always install the latest versions for the most stable experience:
   - File Transformation (https://github.com/IAmParadox27/jellyfin-plugin-file-transformation)
   - Plugin Pages (https://github.com/IAmParadox27/jellyfin-plugin-pages)
@@ -153,8 +153,17 @@ You're more than welcome to contribute to this plugin in any way that betters it
 
 - Please don't commit with any whitespace changes, might be worth turning off auto-linters
 - Please don't use `var` unless you have to due to differing namespaces between JF versions (honestly, I'm not going to gripe for the odd one, but it's good to try at least)
-- Please at least check the plugin compiles with 10.10.7 and the latest version of JF
+- Please at least check the plugin compiles with 10.11.x and 12.x
 - Please put braces on new lines and use them even for 1 line statements
+
+Build with the .NET 10 SDK (which can build both targets). From `src/Jellyfin.Plugin.HomeScreenSections`, run:
+
+```sh
+dotnet build -c Release -p:JellyfinVersion=12.1.0
+dotnet build -c Release -p:JellyfinVersion=10.11.11
+```
+
+The default `JellyfinVersion` is `12.1.0`. Jellyfin 12.x builds to `bin/Release/net10.0`; 10.11.x builds to `bin/Release/net9.0`.
 
 As a general rule of thumb, please try to blend in with the codebase, I use a mutated hungarian notation for my coding style, I will ask for this to be followed.
 
