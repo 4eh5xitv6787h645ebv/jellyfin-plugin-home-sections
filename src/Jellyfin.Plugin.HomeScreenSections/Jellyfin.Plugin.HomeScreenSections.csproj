@@ -87,22 +87,13 @@
         <None Include="..\logo.png" CopyToOutputDirectory="Always" />
     </ItemGroup>
 
-    <Target Name="GenerateAssemblyMetadata_GitBranch" BeforeTargets="BeforeCompile">
+    <Target Name="GenerateAssemblyMetadata" BeforeTargets="BeforeCompile">
         <ItemGroup>
             <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
                 <_Parameter1>GitBranch</_Parameter1>
                 <_Parameter2>$(GitBranch)</_Parameter2>
             </AssemblyAttribute>
         </ItemGroup>
-        <WriteCodeFragment
-                Language="C#"
-                OutputFile="$(IntermediateOutputPath)AssemblyMetadata.g.cs"
-                AssemblyAttributes="@(AssemblyAttribute)" />
-        <ItemGroup>
-            <Compile Include="$(IntermediateOutputPath)AssemblyMetadata.g.cs" />
-        </ItemGroup>
-    </Target>
-    <Target Name="GenerateAssemblyMetadata_JellyfinVersion" BeforeTargets="BeforeCompile">
         <ItemGroup>
             <AssemblyAttribute Include="Jellyfin.Plugin.HomeScreenSections.Attributes.JellyfinVersionAttribute">
                 <_Parameter1>$(JellyfinVersion)</_Parameter1>
@@ -117,8 +108,15 @@
         </ItemGroup>
     </Target>
     
-    <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="Exists('C:\ProgramData\Jellyfin\Server_10_11\plugins\HomeScreenSections')">
-        <Exec Condition="$(JellyfinVersion.StartsWith('12.0'))"     Command="xcopy $(OutDir) &quot;C:\ProgramData\Jellyfin\Server_12\plugins\HomeScreenSections&quot; /y" />
-        <Exec Condition="$(JellyfinVersion.StartsWith('10.11'))"     Command="xcopy $(OutDir) &quot;C:\ProgramData\Jellyfin\Server_10_11\plugins\HomeScreenSections&quot; /y" />
+    <PropertyGroup>
+        <DeployToLocalJellyfin Condition="'$(DeployToLocalJellyfin)' == ''">false</DeployToLocalJellyfin>
+        <LocalJellyfinPluginDir Condition="'$(LocalJellyfinPluginDir)' == '' and $(JellyfinVersion.StartsWith('10.11.'))">C:\ProgramData\Jellyfin\Server_10_11\plugins\HomeScreenSections</LocalJellyfinPluginDir>
+        <LocalJellyfinPluginDir Condition="'$(LocalJellyfinPluginDir)' == '' and $(JellyfinVersion.StartsWith('12.'))">C:\ProgramData\Jellyfin\Server_12\plugins\HomeScreenSections</LocalJellyfinPluginDir>
+    </PropertyGroup>
+    <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(DeployToLocalJellyfin)' == 'true' and ($(JellyfinVersion.StartsWith('10.11.')) or $(JellyfinVersion.StartsWith('12.'))) and Exists('$(LocalJellyfinPluginDir)')">
+        <ItemGroup>
+            <LocalJellyfinPluginFiles Include="$(OutDir)*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(LocalJellyfinPluginFiles)" DestinationFolder="$(LocalJellyfinPluginDir)" />
     </Target>
 </Project>
