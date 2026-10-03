@@ -52,6 +52,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.JellyfinVersionSpecific
                     IsPlayed = isPlayed,
                     DtoOptions = dtoOptions,
                     Limit = 24,
+                    ExcludeItemIds = new[] { item.Id },
                     Recursive = true,
                     ParentId = Guid.Parse(x.ItemId ?? Guid.Empty.ToString()),
                 }.ApplySimilarSettings(item)).Items;
