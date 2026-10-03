@@ -150,10 +150,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
             
             // Default behaviour is to get the 16 most recently added items from each library that matches, then order that by date created and take 16.
             // The reason we do this is to ensure that we always get 16 items, even if there is only 1 library that matches our type.
-            return folders.SelectMany(x =>
-            {
-                BaseItem item = folderOverride ?? m_libraryManager.GetParentItem(Guid.Parse(x.ItemId), user?.Id);
+            IEnumerable<BaseItem> parentItems = folderOverride != null
+                ? new[] { folderOverride }
+                : folders.Select(x => m_libraryManager.GetParentItem(Guid.Parse(x.ItemId), user?.Id));
 
+            return parentItems.SelectMany(item =>
+            {
                 if (item is not Folder folder)
                 {
                     folder = m_libraryManager.GetUserRootFolder();
@@ -190,7 +192,6 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
                             return collapsed
                                 .OrderByDescending(y => y.SortDate)
                                 .Take(c_resultLimit)
-                                .Select(y => y.Item)
                                 .ToArray();
                         }
 
@@ -203,7 +204,6 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
                     return CollapseEpisodes(rawItems, user, dtoOptions)
                         .OrderByDescending(y => y.SortDate)
                         .Take(c_resultLimit)
-                        .Select(y => y.Item)
                         .ToArray();
                 }
                 else
@@ -219,11 +219,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded
                         IsMissing = false,
                         Recursive = true,
                         ParentId = folder.Id
-                    }).Items;
+                    }).Items.Select(x => new RecentItem(x, GetSortDateForItem(x, user, dtoOptions))).ToArray();
                 }
-            }).DistinctBy(x => x.Id)
-            .OrderByDescending(x => GetSortDateForItem(x, user, dtoOptions))
-            .Take(16);
+            }).DistinctBy(x => x.Item.Id)
+            .OrderByDescending(x => x.SortDate)
+            .Take(16)
+            .Select(x => x.Item);
         }
         
         private List<RecentItem> CollapseEpisodes(
