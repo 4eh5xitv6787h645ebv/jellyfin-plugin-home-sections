@@ -16,7 +16,7 @@
         </div>
 
     </div>
-    <button is="emby-button" type="submit" class="raised button-submit block btnSave">
+    <button is="emby-button" type="submit" class="raised button-submit block btnSave" disabled>
         <span data-i18n="AdminSave">Save</span>
     </button>
 </form>
@@ -28,6 +28,7 @@
             setup: function () {
                 var uiLanguage = document.documentElement.lang || navigator.language || 'en';
                 var pageTranslations = {};
+                let saveButton = document.querySelector('.btnSave');
 
                 // Translate static page elements
                 ApiClient.fetch({
@@ -57,20 +58,21 @@
                         accept: 'application/json'
                     }
                 }).then(function (hssMeta) {
-                    ApiClient.getDisplayPreferences('usersettings', ApiClient.getCurrentUserId(), 'emby').then(function (userSettings) {
-                        document.querySelector('#modularHomeEnabled').checked = userSettings.CustomPrefs['useModularHome'] === 'true';
+                    let displayPreferences = ApiClient.getDisplayPreferences('usersettings', ApiClient.getCurrentUserId(), 'emby').then(function (userSettings) {
+                        let preference = userSettings.CustomPrefs ? userSettings.CustomPrefs['useModularHome'] : undefined;
+                        let enabled = hssMeta.Enabled;
+                        if (hssMeta.AllowUserOverride === true && preference !== undefined) {
+                            enabled = preference === 'true';
+                        }
+                        document.querySelector('#modularHomeEnabled').checked = enabled;
                     });
-
-                    if (!document.querySelector('#modularHomeEnabled').checked) {
-                        document.querySelector('#modularHomeEnabled').checked = hssMeta.Enabled;
-                    }
 
                     if (hssMeta.AllowUserOverride !== true) {
                         document.querySelector('#modularHomeEnabled').disabled = true;
                         document.querySelector('#modularHomeEnabled').parentElement.style.opacity = "0.5";
                     }
 
-                    ApiClient.fetch({
+                    let sectionsSettings = ApiClient.fetch({
                         url: ApiClient.getUrl('ModularHomeViews/UserSettings?userId=' + ApiClient.getCurrentUserId()),
                         type: 'GET',
                         dataType: 'json',
@@ -78,7 +80,7 @@
                             accept: 'application/json'
                         }
                     }).then(function (settings) {
-                        ApiClient.fetch({
+                        return ApiClient.fetch({
                             url: ApiClient.getUrl('ModularHomeViews/Sections') + '?language=' + encodeURIComponent(uiLanguage),
                             type: 'GET',
                             dataType: 'json',
@@ -119,14 +121,25 @@
                             }
                         });
                     });
+                    return Promise.all([displayPreferences, sectionsSettings]);
+                }).then(function () {
+                    saveButton.disabled = false;
+                }).catch(function (error) {
+                    console.error('Failed to load user settings:', error);
                 });
 
                 document.querySelector('.configForm')
                     .addEventListener('submit', function (e) {
-                        ApiClient.getDisplayPreferences('usersettings', ApiClient.getCurrentUserId(), 'emby').then(function (userSettings) {
+                        e.preventDefault();
+                        if (saveButton.disabled) {
+                            return false;
+                        }
+                        saveButton.disabled = true;
+
+                        let displayPreferencesUpdate = ApiClient.getDisplayPreferences('usersettings', ApiClient.getCurrentUserId(), 'emby').then(function (userSettings) {
                             userSettings.CustomPrefs['useModularHome'] = document.querySelector('#modularHomeEnabled').checked ? 'true' : 'false';
 
-                            ApiClient.updateDisplayPreferences('usersettings', userSettings, ApiClient.getCurrentUserId(), 'emby');
+                            return ApiClient.updateDisplayPreferences('usersettings', userSettings, ApiClient.getCurrentUserId(), 'emby');
                         });
 
                         let data = {
@@ -144,20 +157,24 @@
                             }
                         });
 
-                        ApiClient.ajax({
+                        let sectionsUpdate = ApiClient.ajax({
                             url: ApiClient.getUrl('ModularHomeViews/UserSettings'),
                             type: 'POST',
                             data: JSON.stringify(data),
                             contentType: 'application/json'
-                        }).then(function () {
+                        });
+
+                        Promise.all([displayPreferencesUpdate, sectionsUpdate]).then(function () {
                             Dashboard.alert(pageTranslations['AdminSettingsUpdated'] || 'Settings have been updated, reloading page in 2 seconds.');
 
                             setTimeout(function () {
                                 location.reload(true);
                             }, 2000);
-                        })
+                        }).catch(function (error) {
+                            saveButton.disabled = false;
+                            Dashboard.alert(pageTranslations['AdminSettingsUpdateFailed'] || 'Unable to save settings. Please try again.');
+                        });
 
-                        e.preventDefault();
                         return false;
                     });
             }
