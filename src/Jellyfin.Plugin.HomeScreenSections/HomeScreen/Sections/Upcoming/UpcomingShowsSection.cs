@@ -15,8 +15,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming
         
         public override string? DisplayText { get; set; } = "Upcoming Shows";
 
-        public UpcomingShowsSection(IUserManager userManager, ILibraryManager libraryManager, IDtoService dtoService, ArrApiService arrApiService, ImageCacheService imageCacheService, ILogger<UpcomingShowsSection> logger)
-            : base(userManager, libraryManager, dtoService, arrApiService, imageCacheService, logger)
+        public UpcomingShowsSection(IUserManager userManager, ILibraryManager libraryManager, IDtoService dtoService, ArrApiService arrApiService, ImageCacheService imageCacheService, ITranslationManager translationManager, ILogger<UpcomingShowsSection> logger)
+            : base(userManager, libraryManager, dtoService, arrApiService, imageCacheService, translationManager, logger)
         {
         }
 
@@ -49,10 +49,10 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming
             return $"https://placehold.co/250x400/{GetRandomBgColor()}/FFF?text={Uri.EscapeDataString($"{missingItem.Series?.Title}\n{missingItem.Title}\nImage Not Found")}";
         }
 
-        protected override BaseItemDto CreateDto(SonarrCalendarDto calendarItem, PluginConfiguration config)
+        protected override BaseItemDto CreateDto(SonarrCalendarDto calendarItem, PluginConfiguration config, string language)
         {
             DateTime airDate = calendarItem.AirDateUtc ?? DateTime.Now;
-            string countdownText = CalculateCountdown(airDate, config);
+            string countdownText = CalculateCountdown(airDate, config, language);
 
             string episodeInfo = $"S{calendarItem.SeasonNumber:D2}E{calendarItem.EpisodeNumber:D2} - {calendarItem.Title}";
 
@@ -97,7 +97,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming
 
         public override IEnumerable<IHomeScreenSection> CreateInstances(Guid? userId, int instanceCount)
         {
-            yield return new UpcomingShowsSection(UserManager, LibraryManager, DtoService, ArrApiService, ImageCacheService, (ILogger<UpcomingShowsSection>)Logger)
+            yield return new UpcomingShowsSection(UserManager, LibraryManager, DtoService, ArrApiService, ImageCacheService, TranslationManager, (ILogger<UpcomingShowsSection>)Logger)
             {
                 DisplayText = DisplayText,
                 AdditionalData = AdditionalData,
