@@ -28,6 +28,25 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             m_translationManager = translationManager;
             m_dataCache = dataCache;
             m_configurationManager = _configurationManager;
+            HomeScreenSectionsPlugin.Instance.ConfigurationChanged += (_, _) => InvalidateCachedSections();
+        }
+
+        /// <summary>
+        /// Stop reusing cached sections after settings change, without interrupting active requests.
+        /// </summary>
+        /// <param name="userId">The user ID, or null to invalidate all users.</param>
+        public void InvalidateCachedSections(Guid? userId = null)
+        {
+            Guid[] pageHashes = m_dataCache.PageHashOwnerIds
+                .Where(x => !userId.HasValue || x.Value == userId.Value)
+                .Select(x => x.Key)
+                .ToArray();
+
+            foreach (Guid pageHash in pageHashes)
+            {
+                // Keep data and expiry for active requests; extending expiry cannot restore ownership.
+                m_dataCache.PageHashOwnerIds.TryRemove(pageHash, out _);
+            }
         }
 
         public List<HomeScreenSectionInfo>? GetCachedSectionsForUser(Guid userId, string? language, int page, int pageSize, Guid pageHash)
@@ -290,8 +309,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
         {
             await Task.Yield();
             
-            Guid[] userPageHashes = m_dataCache.PageHashOwnerIds
-                .Where(x => x.Value == userId)
+            // Invalidated pages no longer have an owner mapping, but still expire normally.
+            Guid[] userPageHashes = m_dataCache.Cache
+                .Where(x => x.Value.UserId == userId)
                 .Select(x => x.Key)
                 .ToArray();
             Guid[] expiredPageHashes = m_dataCache.PageHashExpiry

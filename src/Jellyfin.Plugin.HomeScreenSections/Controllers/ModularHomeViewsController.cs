@@ -20,6 +20,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         private readonly ILogger<ModularHomeViewsController> m_logger;
         private readonly IHomeScreenManager m_homeScreenManager;
         private readonly ITranslationManager m_translationManager;
+        private readonly HomeScreenSectionService m_homeScreenSectionService;
 
         /// <summary>
         /// Constructor.
@@ -27,11 +28,13 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         /// <param name="logger">Instance of <see cref="ILogger"/> interface.</param>
         /// <param name="homeScreenManager">Instance of <see cref="IHomeScreenManager"/> interface.</param>
         /// <param name="translationManager">Instance of <see cref="ITranslationManager"/> interface.</param>
-        public ModularHomeViewsController(ILogger<ModularHomeViewsController> logger, IHomeScreenManager homeScreenManager, ITranslationManager translationManager)
+        /// <param name="homeScreenSectionService">Instance of <see cref="HomeScreenSectionService"/>.</param>
+        public ModularHomeViewsController(ILogger<ModularHomeViewsController> logger, IHomeScreenManager homeScreenManager, ITranslationManager translationManager, HomeScreenSectionService homeScreenSectionService)
         {
             m_logger = logger;
             m_homeScreenManager = homeScreenManager;
             m_translationManager = translationManager;
+            m_homeScreenSectionService = homeScreenSectionService;
         }
 
         /// <summary>
@@ -126,6 +129,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         public ActionResult UpdateSettings([FromBody] ModularHomeUserSettings obj)
         {
             m_homeScreenManager.UpdateUserSettings(obj.UserId, obj);
+            m_homeScreenSectionService.InvalidateCachedSections(obj.UserId);
 
             return Ok();
         }
