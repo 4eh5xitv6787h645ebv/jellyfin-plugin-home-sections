@@ -114,6 +114,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Library
 
         public List<string> EnabledSections { get; set; } = new List<string>();
         
+        public bool EnabledSectionsSaved { get; set; }
+        
         public List<string> LockedSections { get; set; } = new List<string>();
         
         public List<string> DefaultEnabledSections { get; set; } = new List<string>();
