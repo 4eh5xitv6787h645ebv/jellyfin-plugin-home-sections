@@ -261,11 +261,17 @@
     }
     
     function getSectionClass(sectionInfo) {
+        var sectionClass = String(sectionInfo.Section);
         if (sectionInfo.Limit > 1) {
-            return sectionInfo.Section + "-" + sectionInfo.AdditionalData.replace(' ', '-').replace('.', '-').replace("'", '');
-        } else {
-            return sectionInfo.Section;
+            var additionalData = sectionInfo.AdditionalData == null ? '' : String(sectionInfo.AdditionalData);
+            // Preserve existing classes such as Genre-Science-Fiction and Genre-Childrens.
+            sectionClass += "-" + additionalData.replace(' ', '-').replace('.', '-').replace("'", '');
         }
+        sectionClass = sectionClass.replace(/[^A-Za-z0-9_\-\u0080-\uffff]/g, '-');
+        if (!/^(?:[A-Za-z_\u0080-\uffff]|-[A-Za-z_\-\u0080-\uffff])/.test(sectionClass)) {
+            sectionClass = 'hss-' + sectionClass;
+        }
+        return sectionClass;
     }
     
     function loadHomeSection(page, apiClient, user, userSettings, sectionInfo, options) {
@@ -273,7 +279,8 @@
         var appRouterParent = {{appRouterParent_hook}};
         console.log("Loading section: ." + sectionClass + ", could also be .section" + options.sectionIndex);
         
-        var var5_, var6_, var7_, var8_, elem = page.querySelector('.' + sectionClass + '[data-page="' + window.HssPageMeta.Page + '"]');
+        // Display classes may collide; the page-local index identifies each row, including duplicates.
+        var var5_, var6_, var7_, var8_, elem = page.querySelector('[data-section-index="' + options.sectionIndex + '"][data-page="' + window.HssPageMeta.Page + '"]');
         if (null !== elem) {
             var html = "";
             var layoutManager = {{layoutmanager_hook}}.A;
@@ -584,7 +591,7 @@
                                     if (existingContainer !== null) {
                                         existingSections = existingContainer.children.length;
                                     }
-                                    for (var44_5 = 0; var44_5 < var44_.TotalRecordCount; var44_5++) var44_6 = getSectionClass(var44_.Items[var44_5]), var44_.Items[var44_5].Limit > 1, var44_3 += '<div data-page="' + window.HssPageMeta.Page + '" style="order:' + (var44_.Items[var44_5].OrderIndex + (1000 * (window.HssPageMeta.Page - 1))) + ';" class="verticalSection ' + var44_6 + ' section' + (existingSections + var44_5) + '"></div>';
+                                    for (var44_5 = 0; var44_5 < var44_.TotalRecordCount; var44_5++) var44_6 = getSectionClass(var44_.Items[var44_5]), var44_.Items[var44_5].Limit > 1, var44_3 += '<div data-section-index="' + var44_5 + '" data-page="' + window.HssPageMeta.Page + '" style="order:' + (var44_.Items[var44_5].OrderIndex + (1000 * (window.HssPageMeta.Page - 1))) + ';" class="verticalSection ' + var44_6 + ' section' + (existingSections + var44_5) + '"></div>';
                                     
                                     if (window.HssPageMeta.Page !== 1) {
                                         var tempContainer = document.createElement("div");
