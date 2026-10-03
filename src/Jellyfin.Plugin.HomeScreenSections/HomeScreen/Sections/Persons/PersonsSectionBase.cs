@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Persons
             VirtualFolderInfo[] folders = m_libraryManager.GetVirtualFolders()
                 .FilterToUserPermitted(m_libraryManager, user);
 
-            IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery()
+            IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery(user)
             {
                 PersonIds = new[] { personId },
                 PersonTypes = PersonTypes.ToArray(),
@@ -106,7 +106,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Persons
 
             foreach (Person person in people)
             {
-                IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery()
+                IReadOnlyList<BaseItem> personItems = folders.SelectMany(x => m_libraryManager.GetItemList(new InternalItemsQuery(user)
                 {
                     PersonIds = new[] { person.Id },
                     PersonTypes = PersonTypes.ToArray(),
