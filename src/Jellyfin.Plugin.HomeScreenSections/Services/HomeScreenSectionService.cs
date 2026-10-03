@@ -37,6 +37,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 return null;
             }
             
+            return GetCachedSectionsForUser(userSectionsData, language, page, pageSize, pageHash);
+        }
+
+        private List<HomeScreenSectionInfo>? GetCachedSectionsForUser(UserSectionsData userSectionsData, string? language, int page, int pageSize, Guid pageHash)
+        {
             // Make sure that it's flagged as being used, even if we don't return anything here the page is still active
             // as we've received a request for it.
             userSectionsData.LastAccessed = DateTime.UtcNow;
@@ -94,10 +99,10 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             return pageHash;
         }
 
-        public List<HomeScreenSectionInfo>? MonitorLiveUpdatedSectionsForUser(Guid userId, string? language, int page, int? pageSize = null, Guid? pageHash = null)
+        public async Task<List<HomeScreenSectionInfo>?> MonitorLiveUpdatedSectionsForUser(Guid userId, string? language, int page, int? pageSize = null, Guid? pageHash = null, CancellationToken cancellationToken = default)
         {
             // Kick off the task to remove the expired "temp" user caches to avoid a memory leak.
-            Task.Run(() => ClearExpiredUserCaches(userId));
+            _ = Task.Run(() => ClearExpiredUserCaches(userId));
 
             // If the sections have been requested with a page hash that wasn't generated for this user, generate a new one.
             if (pageHash.HasValue && !DoesPageBelongToUser(pageHash.Value, userId))
@@ -105,6 +110,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 pageHash = GeneratePageHash(userId);
             }
             
+            bool returnAllSections = false;
             if (pageHash == null)
             {
                 pageHash = GetActiveTempPageCacheForUser(userId);
@@ -112,71 +118,40 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 if (pageHash == null)
                 {
                     pageHash = GeneratePageHash(userId);
-                    
-                    CacheSectionsForUser(userId, pageHash.Value);
-
-                    int totalSectionCount = m_dataCache.Cache[pageHash.Value].OrderedSections.SelectMany(x => x.Value).Count();
-                    return GetCachedSectionsForUser(userId, language, 1, totalSectionCount, pageHash.Value);
+                    returnAllSections = true;
                 }
             }
             
-            if (!m_dataCache.Cache.ContainsKey(pageHash.Value))
-            {
-                Thread cacheThread = new Thread(() => CacheSectionsForUser(userId, pageHash.Value));
-                cacheThread.Start();
-            }
+            // Cancellation only stops this request's wait, not the shared generation.
+            UserSectionsData cache = await Task.Run(() => CacheSectionsForUser(userId, pageHash.Value))
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
 
-            SpinWait spinWait = new SpinWait();
-            while (!m_dataCache.Cache.ContainsKey(pageHash.Value))
-            {
-                spinWait.SpinOnce();
-            }
-            spinWait.Reset();
-
-            // If there's no data at all then we wait until its started.
-            while (!m_dataCache.Cache[pageHash.Value].SectionsInProgress.Any() && !m_dataCache.Cache[pageHash.Value].OrderedSections.Any())
-            {
-                spinWait.SpinOnce();
-            }
-            
             // We always wait from the start, if we hit a page that's already cached then we'll just return immediately.
             // If its still in progress then we'll wait for it to finish.
-            UserSectionsData cache = m_dataCache.Cache[pageHash.Value];
-            int lowestSectionIndex = Math.Min(
-                m_dataCache.Cache[pageHash.Value].OrderedSections.Any() 
-                    ? m_dataCache.Cache[pageHash.Value].OrderedSections.Min(x => x.Key) 
-                    : int.MaxValue,
-                m_dataCache.Cache[pageHash.Value].SectionsInProgress.Any() 
-                    ? m_dataCache.Cache[pageHash.Value].SectionsInProgress.Min(x => x.Key) 
-                    : int.MaxValue);
-
-            for (int i = lowestSectionIndex; i <= cache.MaxOrderIndex; i++)
+            foreach (TaskCompletionSource completion in cache.SectionCompletions.Values)
             {
-                if (cache.OrderIndicesWithoutSections.Any(x => x.Contains(i)))
+                await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                if (pageSize.HasValue && !returnAllSections)
                 {
-                    continue;
-                }
-                
-                while (cache.SectionsInProgress.ContainsKey(i))
-                {
-                    spinWait.SpinOnce();
-                }
-                
-                List<HomeScreenSectionInfo>? sections = GetCachedSectionsForUser(userId, language, page, pageSize ?? cache.OrderedSections.SelectMany(x => x.Value).Count(), pageHash.Value);
-                if (sections != null)
-                {
-                    return sections;
+                    List<HomeScreenSectionInfo>? sections = GetCachedSectionsForUser(cache, language, page, pageSize.Value, pageHash.Value);
+                    if (sections != null)
+                    {
+                        return sections;
+                    }
                 }
             }
-            
-            return null;
+
+            int totalSectionCount = cache.OrderedSections.SelectMany(x => x.Value).Count();
+            return GetCachedSectionsForUser(cache, language, returnAllSections ? 1 : page,
+                returnAllSections ? totalSectionCount : pageSize ?? totalSectionCount, pageHash.Value);
         }
     
-        public void CacheSectionsForUser(Guid userId, Guid? pageHash = null)
+        public UserSectionsData CacheSectionsForUser(Guid userId, Guid pageHash)
         {
-            if (m_dataCache.Cache.ContainsKey(pageHash ?? Guid.Empty))
+            if (m_dataCache.Cache.TryGetValue(pageHash, out UserSectionsData? existingCache))
             {
-                return;
+                return existingCache;
             }
             
             ModularHomeUserSettings? settings = m_homeScreenManager.GetUserSettings(userId);
@@ -188,40 +163,53 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 .GroupBy(x => x.OrderIndex)
                 .ToArray();
 
-            UserSectionsData? userSectionsData = null;
-            if (pageHash != null)
+            UserSectionsData userSectionsData = new UserSectionsData()
             {
-                userSectionsData = new UserSectionsData()
-                {
-                    UserId = userId,
-                    MaxOrderIndex = groupedOrderedSections.Select(g => g.Key).DefaultIfEmpty(0).Max()
-                };
-                
-                m_dataCache.Cache.TryAdd(pageHash.Value, userSectionsData);
+                UserId = userId,
+                MaxOrderIndex = groupedOrderedSections.Select(g => g.Key).DefaultIfEmpty(0).Max()
+            };
 
-                foreach (int orderIndex in groupedOrderedSections.Select(x => x.Key).OrderBy(x => x))
-                {
-                    userSectionsData.SectionsInProgress.TryAdd(orderIndex, true);
-                }
+            foreach (int orderIndex in groupedOrderedSections.Select(x => x.Key).OrderBy(x => x))
+            {
+                userSectionsData.SectionsInProgress.TryAdd(orderIndex, true);
+                userSectionsData.SectionCompletions.Add(orderIndex, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            }
 
-                int[] sectionIndices = userSectionsData.SectionsInProgress.Keys.OrderBy(x => x).ToArray();
-                for (int i = 1; i < sectionIndices.Length; i++)
-                {
-                    int prevIndex = sectionIndices[i - 1];
-                    int currentIndex = sectionIndices[i];
+            int[] sectionIndices = userSectionsData.SectionsInProgress.Keys.OrderBy(x => x).ToArray();
+            for (int i = 1; i < sectionIndices.Length; i++)
+            {
+                int prevIndex = sectionIndices[i - 1];
+                int currentIndex = sectionIndices[i];
 
-                    if (currentIndex - prevIndex > 1)
+                if (currentIndex - prevIndex > 1)
+                {
+                    userSectionsData.OrderIndicesWithoutSections.Add(new IntRange()
                     {
-                        userSectionsData.OrderIndicesWithoutSections.Add(new IntRange()
-                        {
-                            Start = prevIndex + 1, 
-                            End = currentIndex - 1
-                        });
-                    }
+                        Start = prevIndex + 1,
+                        End = currentIndex - 1
+                    });
                 }
             }
-            
-            Parallel.ForEach(groupedOrderedSections, orderedSections =>
+
+            // Publish only fully initialized entries; only the winner starts generation.
+            UserSectionsData cache = m_dataCache.Cache.GetOrAdd(pageHash, userSectionsData);
+            if (!ReferenceEquals(cache, userSectionsData))
+            {
+                return cache;
+            }
+
+            foreach (IGrouping<int, SectionSettings> orderedSections in groupedOrderedSections)
+            {
+                _ = Task.Run(() => CacheSectionGroup(userId, pageHash, cache, sectionTypes, orderedSections));
+            }
+
+            return cache;
+        }
+
+        private void CacheSectionGroup(Guid userId, Guid pageHash, UserSectionsData cache, List<IHomeScreenSection> sectionTypes, IGrouping<int, SectionSettings> orderedSections)
+        {
+            TaskCompletionSource completion = cache.SectionCompletions[orderedSections.Key];
+            try
             {
                 ConcurrentBag<IHomeScreenSection?> tmpPluginSections = new ConcurrentBag<IHomeScreenSection?>(); // we want these randomly distributed among each other.
 
@@ -260,12 +248,18 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 List<IHomeScreenSection> sectionList = tmpPluginSections.Where(x => x != null).Select(x => x!).ToList();
                 sectionList.Shuffle();
 
-                if (userSectionsData != null)
-                {
-                    userSectionsData.OrderedSections.TryAdd(orderedSections.Key, sectionList);
-                    userSectionsData.SectionsInProgress.Remove(orderedSections.Key, out _);
-                }
-            });
+                cache.OrderedSections.TryAdd(orderedSections.Key, sectionList);
+                cache.SectionsInProgress.Remove(orderedSections.Key, out _);
+                completion.SetResult();
+            }
+            catch (Exception e)
+            {
+                m_logger.LogError(e, $"An error occurred while creating section instances for user '{userId}' and order index '{orderedSections.Key}'.");
+                // Remove only this failed entry so later requests can retry without evicting a replacement.
+                m_dataCache.Cache.TryRemove(new KeyValuePair<Guid, UserSectionsData>(pageHash, cache));
+                // Keep the fault available to every waiter holding this cache, even after eviction.
+                completion.SetException(e);
+            }
         }
 
         private HomeScreenSectionInfo SectionToInfo(IHomeScreenSection section, int configuredOrder, string? language)

@@ -260,15 +260,15 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         [HttpGet("Sections")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Authorize]
-        public ActionResult<QueryResult<HomeScreenSectionInfo>> GetHomeScreenSections(
+        public async Task<ActionResult<QueryResult<HomeScreenSectionInfo>>> GetHomeScreenSections(
             [FromQuery] Guid? userId,
             [FromQuery] string? language,
             [FromQuery] int? page = null,
             [FromQuery] int? numResultsPerPage = null,
             [FromQuery] Guid? pageHash = null)
         {
-            List<HomeScreenSectionInfo> sections = m_homeScreenSectionService.MonitorLiveUpdatedSectionsForUser(userId ?? Guid.Empty, language, 
-                page ?? 1, numResultsPerPage, pageHash) ?? new List<HomeScreenSectionInfo>();
+            List<HomeScreenSectionInfo> sections = await m_homeScreenSectionService.MonitorLiveUpdatedSectionsForUser(userId ?? Guid.Empty, language,
+                page ?? 1, numResultsPerPage, pageHash, HttpContext.RequestAborted) ?? new List<HomeScreenSectionInfo>();
 
             return new QueryResult<HomeScreenSectionInfo>(
                 0,
