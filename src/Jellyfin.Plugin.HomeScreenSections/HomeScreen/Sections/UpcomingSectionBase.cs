@@ -72,12 +72,14 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
                     return new QueryResult<BaseItemDto>();
                 }
 
-                T[] upcomingItems = [.. FilterAndSortItems(calendarItems).Take(16)];
+                T[] upcomingItems = [.. FilterAndSortItems(calendarItems)];
 
                 if (config.FilterUpcomingByLibraryAccess)
                 {
                     upcomingItems = FilterByLibraryAccess(upcomingItems, payload.UserId);
                 }
+
+                upcomingItems = [.. upcomingItems.Take(16)];
 
                 Logger.LogDebug("Found {Count} upcoming items after filtering", upcomingItems.Length);
 
@@ -125,13 +127,26 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 
             // The *arr instance may be using a different mount point/path mapping than Jellyfin,
             // in which case we can't tell which library the item would belong to, so default to showing it.
-            bool matchesKnownLibrary = allLocations.Any(location => normalizedItemPath.StartsWith(NormalizePath(location), StringComparison.OrdinalIgnoreCase));
+            bool matchesKnownLibrary = allLocations.Any(location => IsPathInLibrary(normalizedItemPath, location));
             if (!matchesKnownLibrary)
             {
                 return true;
             }
 
-            return permittedLocations.Any(location => normalizedItemPath.StartsWith(NormalizePath(location), StringComparison.OrdinalIgnoreCase));
+            return permittedLocations.Any(location => IsPathInLibrary(normalizedItemPath, location));
+        }
+
+        private static bool IsPathInLibrary(string itemPath, string location)
+        {
+            if (string.IsNullOrEmpty(location))
+            {
+                return false;
+            }
+
+            string normalizedLocation = NormalizePath(location);
+            // Match Jellyfin's filesystem case rules, including on Linux hosts receiving *arr backslashes.
+            StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            return string.Equals(itemPath, normalizedLocation, comparison) || itemPath.StartsWith(normalizedLocation + "/", comparison);
         }
 
         private static string NormalizePath(string path)
