@@ -73,11 +73,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Latest
             int dayIncrement = 30;
             DateTime currentDate = DateTime.Now;
             DateTime stopDate = DateTime.Parse("01/01/1925"); // The first show ever was 1925 so this should be safe, we never expect to get as far back as this but we need an escape.
-            DateTime? earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
-            if (!earliestDate.HasValue)
-            {
-                return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
-            }
+            DateTime? earliestDate = null;
             bool continueSearching = true;
             
             do
@@ -137,14 +133,28 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Latest
                     continueSearching = false;
                 }
                 
+                if (continueSearching && !earliestDate.HasValue)
+                {
+                    earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
+                    if (!earliestDate.HasValue)
+                    {
+                        break;
+                    }
+                }
+
                 currentDate = currentDate.Subtract(TimeSpan.FromDays(dayIncrement));
                 
-                if (currentDate < stopDate || currentDate.ToUniversalTime() < earliestDate.Value)
+                if (currentDate < stopDate || (earliestDate.HasValue && currentDate.ToUniversalTime() < earliestDate.Value))
                 {
                     break;
                 }
             } while (continueSearching);
             
+            if (selectedSeries.Count == 0)
+            {
+                return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
+            }
+
             // Fetch the full series objects with proper DtoOptions for images
             var seriesIds = selectedSeries.OrderByDescending(x => x.LatestPremiereDate).Select(x => x.Series.Id);
             var seriesIdArray = seriesIds.ToArray();

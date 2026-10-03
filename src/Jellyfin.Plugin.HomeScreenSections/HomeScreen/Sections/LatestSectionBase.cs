@@ -86,11 +86,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
             int dayIncrement = 30;
             DateTime currentDate = DateTime.Now;
             DateTime stopDate = DateTime.Parse("01/01/1887"); // The first movie ever was 1888 so this should be safe, we never expect to get as far back as this but we need an escape.
-            DateTime? earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
-            if (!earliestDate.HasValue)
-            {
-                return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
-            }
+            DateTime? earliestDate = null;
             bool continueSearching = true;
 
             do
@@ -139,9 +135,18 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
                     continueSearching = false;
                 }
                 
+                if (continueSearching && !earliestDate.HasValue)
+                {
+                    earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
+                    if (!earliestDate.HasValue)
+                    {
+                        break;
+                    }
+                }
+
                 currentDate = currentDate.Subtract(TimeSpan.FromDays(dayIncrement));
                 
-                if (currentDate < stopDate || currentDate.ToUniversalTime() < earliestDate.Value)
+                if (currentDate < stopDate || (earliestDate.HasValue && currentDate.ToUniversalTime() < earliestDate.Value))
                 {
                     break;
                 }
