@@ -73,6 +73,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Latest
             int dayIncrement = 30;
             DateTime currentDate = DateTime.Now;
             DateTime stopDate = DateTime.Parse("01/01/1925"); // The first show ever was 1925 so this should be safe, we never expect to get as far back as this but we need an escape.
+            DateTime? earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
+            if (!earliestDate.HasValue)
+            {
+                return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
+            }
             bool continueSearching = true;
             
             do
@@ -134,7 +139,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Latest
                 
                 currentDate = currentDate.Subtract(TimeSpan.FromDays(dayIncrement));
                 
-                if (currentDate < stopDate)
+                if (currentDate < stopDate || currentDate.ToUniversalTime() < earliestDate.Value)
                 {
                     break;
                 }
