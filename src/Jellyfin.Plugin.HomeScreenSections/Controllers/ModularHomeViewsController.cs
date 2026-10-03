@@ -59,6 +59,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             List<HomeScreenSectionInfo> items = new List<HomeScreenSectionInfo>();
 
             IEnumerable<IHomeScreenSection> sections = m_homeScreenManager.GetSectionTypes();
+            IDictionary<string, string>? translationPack = string.IsNullOrWhiteSpace(language)
+                ? null : m_translationManager.GetTranslationPack(language.Trim());
 
             foreach (IHomeScreenSection section in sections)
             {
@@ -69,9 +71,17 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
 
                 if (!string.IsNullOrWhiteSpace(language) && item.DisplayText != null)
                 {
-                    // Fall back to this section's own display text, not a shared literal.
-                    item.DisplayText = m_translationManager.Translate(
-                        item.AdminTranslationKey ?? item.Section!, language.Trim(), item.DisplayText, section.TranslationMetadata);
+                    if (item.AdminTranslationKey != null && translationPack != null &&
+                        translationPack.TryGetValue(item.AdminTranslationKey, out string? adminDisplayText))
+                    {
+                        item.DisplayText = adminDisplayText;
+                    }
+                    else
+                    {
+                        // Fall back to this section's own display text, not a shared literal.
+                        item.DisplayText = m_translationManager.Translate(
+                            item.AdminTranslationKey ?? item.Section!, language.Trim(), item.DisplayText, section.TranslationMetadata);
+                    }
                 }
 
                 items.Add(item);
