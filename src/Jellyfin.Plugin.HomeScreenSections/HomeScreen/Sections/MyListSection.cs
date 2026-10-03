@@ -20,11 +20,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 
 		public int? Limit => 1;
 
-		public string? Route => null;
+		public string? Route => OriginalPayload != null ? "originalpayload" : null;
 
 		public string? AdditionalData { get; set; }
 
-		public object? OriginalPayload => null;
+		public object? OriginalPayload { get; private set; }
 		
 		private IUserManager UserManager { get; set; }
 
@@ -41,7 +41,15 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 
 		public IEnumerable<IHomeScreenSection> CreateInstances(Guid? userId, int instanceCount)
 		{
-			yield return this;
+			User? user = userId == null || userId == Guid.Empty ? null : UserManager.GetUserById(userId.Value);
+			Playlist? myListPlaylist = user == null ? null : PlaylistManager.GetPlaylists(user.Id).FirstOrDefault(x => x.Name == "My List");
+
+			yield return new MyListSection(UserManager, DtoService, PlaylistManager)
+			{
+				DisplayText = DisplayText,
+				AdditionalData = AdditionalData,
+				OriginalPayload = myListPlaylist == null ? null : DtoService.GetBaseItemDto(myListPlaylist, new DtoOptions(), user)
+			};
 		}
 
 		public QueryResult<BaseItemDto> GetResults(HomeScreenSectionPayload payload, IQueryCollection queryCollection)
