@@ -26,6 +26,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         private Dictionary<string, IHomeScreenSection> m_delegates = new Dictionary<string, IHomeScreenSection>();
         private Dictionary<Guid, bool> m_userFeatureEnabledStates = new Dictionary<Guid, bool>();
 
+        private readonly object m_settingsLock = new object();
         private readonly IServiceProvider m_serviceProvider;
         private readonly IApplicationPaths m_applicationPaths;
         private readonly ILogger m_logger;
@@ -192,27 +193,28 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
             IEnumerable<SectionSettings> defaultEnabledSections =
                 HomeScreenSectionsPlugin.Instance.Configuration.SectionSettings.Where(x => x.Enabled);
             
-            ModularHomeUserSettings? settings = new ModularHomeUserSettings
+            ModularHomeUserSettings? settings = null;
+            lock (m_settingsLock)
             {
-                UserId = userId,
-                LockedSections = adminLockedSections.Select(x => x.SectionId).ToList(),
-                DefaultEnabledSections = defaultEnabledSections.Select(x => x.SectionId).ToList()
-            };
-            if (File.Exists(pluginSettings))
-            {
-                JArray settingsArray = JArray.Parse(File.ReadAllText(pluginSettings));
-
-                if (settingsArray.Select(x => JsonConvert.DeserializeObject<ModularHomeUserSettings>(x.ToString())).Any(x => x != null && x.UserId.Equals(userId)))
+                if (File.Exists(pluginSettings))
                 {
-                    settings = settingsArray.Select(x => JsonConvert.DeserializeObject<ModularHomeUserSettings>(x.ToString())).First(x => x != null && x.UserId.Equals(userId));
+                    JArray settingsArray = JArray.Parse(File.ReadAllText(pluginSettings));
+                    settings = settingsArray.Select(x => JsonConvert.DeserializeObject<ModularHomeUserSettings>(x.ToString())).FirstOrDefault(x => x != null && x.UserId.Equals(userId));
                 }
             }
 
-            // If there are none enabled by the user then add all the default enabled settings.
-            if (settings?.EnabledSections.Count == 0)
+            // If there are no saved settings or a legacy record has none enabled, add all the default enabled settings.
+            if (settings == null || (!settings.EnabledSectionsSaved && settings.EnabledSections.Count == 0))
             {
-                settings.EnabledSections.AddRange(HomeScreenSectionsPlugin.Instance.Configuration.SectionSettings.Where(x => x.Enabled).Select(x => x.SectionId));
+                settings = new ModularHomeUserSettings
+                {
+                    UserId = userId,
+                    EnabledSections = defaultEnabledSections.Select(x => x.SectionId).ToList()
+                };
             }
+
+            settings.LockedSections = adminLockedSections.Select(x => x.SectionId).ToList();
+            settings.DefaultEnabledSections = defaultEnabledSections.Select(x => x.SectionId).ToList();
 
             if (settings != null)
             {
@@ -238,7 +240,6 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         public bool UpdateUserSettings(Guid userId, ModularHomeUserSettings userSettings)
         {
             m_logger.LogInformation($"Updating user settings for user {userId}");
-            m_logger.LogInformation($"Json of user settings received from browser: {JsonConvert.SerializeObject(userSettings)}");
             
             string pluginSettings = Path.Combine(m_applicationPaths.PluginConfigurationsPath, typeof(HomeScreenSectionsPlugin).Namespace!, c_settingsFile);
             m_logger.LogInformation($"Plugin settings file: {pluginSettings}");
@@ -248,39 +249,54 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
             m_logger.LogInformation($"Creating directory: '{fInfo.Directory?.FullName}' if it doesn't exist.");
             fInfo.Directory?.Create();
 
-            JArray settings = new JArray();
-            List<ModularHomeUserSettings?> newSettings = new List<ModularHomeUserSettings?>();
-
-            m_logger.LogInformation($"Checking if user settings already exist for user {userId} and reading it if so.");
-            if (File.Exists(pluginSettings))
+            lock (m_settingsLock)
             {
-                m_logger.LogInformation($"User settings file exists.");
-                settings = JArray.Parse(File.ReadAllText(pluginSettings));
-                
-                m_logger.LogInformation($"Parsed user settings: {settings.ToString(Formatting.None)}");
-                newSettings = settings.Select(x => JsonConvert.DeserializeObject<ModularHomeUserSettings>(x.ToString())).ToList()!;
-                
-                m_logger.LogInformation($"Removing all existing user settings for user {userId} and adding the new one.");
-                newSettings.RemoveAll(x => x != null && x.UserId.Equals(userId));
+                JArray settings = new JArray();
+                List<ModularHomeUserSettings?> newSettings = new List<ModularHomeUserSettings?>();
 
+                m_logger.LogInformation($"Checking if user settings already exist for user {userId} and reading it if so.");
+                if (File.Exists(pluginSettings))
+                {
+                    m_logger.LogInformation($"User settings file exists.");
+                    settings = JArray.Parse(File.ReadAllText(pluginSettings));
+
+                    newSettings = settings.Select(x => JsonConvert.DeserializeObject<ModularHomeUserSettings>(x.ToString())).ToList()!;
+
+                    m_logger.LogInformation($"Removing all existing user settings for user {userId} and adding the new one.");
+                    newSettings.RemoveAll(x => x != null && x.UserId.Equals(userId));
+
+                    settings.Clear();
+                }
+
+                userSettings.EnabledSectionsSaved = true;
                 newSettings.Add(userSettings);
 
-                settings.Clear();
+                m_logger.LogInformation($"Adding user settings for user {userId} to the settings array.");
+                foreach (ModularHomeUserSettings? userSetting in newSettings)
+                {
+                    settings.Add(JObject.FromObject(userSetting ?? new ModularHomeUserSettings()));
+                }
+
+                m_logger.LogInformation($"Writing user settings to file: {pluginSettings}");
+                WriteSettingsFile(pluginSettings, settings.ToString(Formatting.Indented));
             }
 
-            m_logger.LogInformation($"Adding user settings for user {userId} to the settings array.");
-            foreach (ModularHomeUserSettings? userSetting in newSettings)
-            {
-                settings.Add(JObject.FromObject(userSetting ?? new ModularHomeUserSettings()));
-            }
-
-            m_logger.LogInformation($"Writing user settings to file: {pluginSettings}");
-            File.WriteAllText(pluginSettings, settings.ToString(Formatting.Indented));
-
-            m_logger.LogInformation($"Content of written settings json: {File.ReadAllText(pluginSettings)}");
-            
             m_logger.LogInformation($"User settings updated.");
             return true;
+        }
+
+        private static void WriteSettingsFile(string path, string contents)
+        {
+            string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(tempPath, contents);
+                File.Move(tempPath, path, true);
+            }
+            finally
+            {
+                File.Delete(tempPath);
+            }
         }
     }
 }
