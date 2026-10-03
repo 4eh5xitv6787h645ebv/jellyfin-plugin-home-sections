@@ -34,9 +34,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.JellyfinVersionSpecific
             
             IList<BaseItem>? similar = folders.SelectMany(x =>
             {
-                var item = section.LibraryManager.GetParentItem(Guid.Parse(x.ItemId), user?.Id);
+                var parentItem = section.LibraryManager.GetParentItem(Guid.Parse(x.ItemId), user?.Id);
 
-                if (item is not Folder folder)
+                if (parentItem is not Folder folder)
                 {
                     folder = section.LibraryManager.GetUserRootFolder();
                 }
