@@ -118,6 +118,11 @@
         }
     }
     
+    function escapeTranslation(key, fallbackText) {
+        var text = (window.HssTranslations && window.HssTranslations[key]) || fallbackText;
+        return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     function createDiscoverCards(items) {
         var html = '';
         
@@ -125,7 +130,7 @@
         items.forEach(function (item) {
             html += '<div class="card overflowPortraitCard card-hoverable card-withuserdata discover-card" data-index="' + index + '" data-tmdb-id="' + item.ProviderIds.Jellyseerr + '" data-media-type="' + item.SourceType + '">';
             html += '   <div class="cardBox cardBox-bottompadded">';
-            html += '       <div class="cardScalable discoverCard-' + item.SourceType + '">';
+            html += '       <div class="cardScalable discoverCard-' + item.SourceType + '" data-label="' + escapeTranslation(item.SourceType === 'movie' ? 'CardMovie' : 'CardSeries', item.SourceType === 'movie' ? 'Movie' : 'Series') + '">';
             html += '           <div class="cardPadder cardPadder-overflowPortrait lazy-hidden-children"></div>';
             html += '           <canvas aria-hidden="true" width="20" height="20" class="blurhash-canvas lazy-hidden"></canvas>';
             
@@ -217,7 +222,7 @@
 
             html += '<div class="card ' + cardShapeClass + ' card-hoverable card-withuserdata ' + cardClass + '" data-index="' + index + '" data-content-type="' + contentType + '">';
             html += '   <div class="cardBox cardBox-bottompadded">';
-            html += '       <div class="cardScalable ' + cardScalableClass + '">';
+            html += '       <div class="cardScalable ' + cardScalableClass + '" data-label="' + escapeTranslation('CardUpcoming', 'Upcoming') + '">';
             html += '           <div class="cardPadder ' + cardPadderClass + ' lazy-hidden-children"></div>';
             
             if (posterUrl) {
@@ -490,7 +495,23 @@
 
         var getSectionsUrl = apiClient.getUrl("HomeScreen/Sections", getSectionsData);
 
-        return apiClient.getJSON(getSectionsUrl).then(function (response) {
+        var language = getSectionsData.Language || 'en';
+        if (window.HssTranslationsLanguage !== language) {
+            window.HssTranslationsLanguage = language;
+            window.HssTranslations = null;
+            window.HssTranslationsPromise = apiClient.getJSON(apiClient.getUrl("ModularHomeViews/Translations", {
+                language: language
+            })).then(function (translations) {
+                return translations || {};
+            }, function () {
+                return {};
+            });
+        }
+
+        var translationsPromise = window.HssTranslationsPromise || Promise.resolve(window.HssTranslations || {});
+        return Promise.all([apiClient.getJSON(getSectionsUrl), translationsPromise]).then(function (responses) {
+            var response = responses[0];
+            window.HssTranslations = responses[1];
             if (response.TotalRecordCount === 0 && window.HssPageMeta.Page > 1) {
                 window.HssPageMeta.Finished = true;
                 // Just a do nothing function

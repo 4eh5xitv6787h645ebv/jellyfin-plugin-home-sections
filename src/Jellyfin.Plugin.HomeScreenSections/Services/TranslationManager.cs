@@ -162,7 +162,13 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 
             if (m_translationPacks.TryGetValue(languageKey, out JObject? pack))
             {
-                return pack.ToObject<Dictionary<string, string>>();
+                Dictionary<string, string> translations = m_translationPacks["en"].ToObject<Dictionary<string, string>>()!;
+                foreach (KeyValuePair<string, JToken?> translation in pack)
+                {
+                    translations[translation.Key] = translation.Value!.ToObject<string>()!;
+                }
+
+                return translations;
             }
 
             return null;

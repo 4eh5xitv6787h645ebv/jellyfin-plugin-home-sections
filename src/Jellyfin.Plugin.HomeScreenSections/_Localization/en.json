@@ -231,5 +231,20 @@
   "AdminRecentlyAddedShowsItemTypeDropdown": "Item Type",
   "AdminRecentlyAddedShowsItemTypeDropdown_Desc": "What type of item do you want to display?",
   "AdminRecentlyAddedShowsItemTypeDropdown_shows": "Shows",
-  "AdminRecentlyAddedShowsItemTypeDropdown_episodes": "Episodes"
+  "AdminRecentlyAddedShowsItemTypeDropdown_episodes": "Episodes",
+  "CardMovie": "Movie",
+  "CardSeries": "Series",
+  "CardUpcoming": "Upcoming",
+  "RequestFailedDetails": "Item request failed. Check browser logs for details.",
+  "RequestSuccess": "Item successfully requested",
+  "RequestFailed": "Item request failed",
+  "CountdownToday": "Today!",
+  "CountdownDay": "{0} Day",
+  "CountdownDays": "{0} Days",
+  "CountdownWeek": "{0} Week",
+  "CountdownWeeks": "{0} Weeks",
+  "CountdownMonth": "{0} Month",
+  "CountdownMonths": "{0} Months",
+  "CountdownYear": "{0} Year",
+  "CountdownYears": "{0} Years"
 }

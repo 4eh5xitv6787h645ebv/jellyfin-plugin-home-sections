@@ -25,7 +25,7 @@
 
 .discoverCard-movie:before {
     position: absolute;
-    content: 'Movie';
+    content: attr(data-label);
     z-index: 1386;
     color: white;
     text-transform: uppercase;
@@ -42,7 +42,7 @@
 
 .discoverCard-tv:before {
     position: absolute;
-    content: 'Series';
+    content: attr(data-label);
     z-index: 1386;
     color: white;
     text-transform: uppercase;
@@ -95,7 +95,7 @@
 .upcomingMusicCard:before,
 .upcomingBookCard:before {
     position: absolute;
-    content: 'Upcoming';
+    content: attr(data-label);
     z-index: 1386;
     cursor: default;
     color: white;

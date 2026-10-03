@@ -22,6 +22,9 @@ if (typeof HomeScreenSectionsHandler == 'undefined') {
                 }
             });
         },
+        translate: function(key, fallbackText) {
+            return (window.HssTranslations && window.HssTranslations[key]) || fallbackText;
+        },
         clickHandler: function(event) {
             window.ApiClient.ajax({
                 url: window.ApiClient.getUrl("HomeScreen/DiscoverRequest"),
@@ -35,14 +38,14 @@ if (typeof HomeScreenSectionsHandler == 'undefined') {
                 dataType: 'json'
             }).then(function(response) {
                 if (response.errors && response.errors.length > 0) {
-                    Dashboard.alert("Item request failed. Check browser logs for details.");
+                    Dashboard.alert(HomeScreenSectionsHandler.translate('RequestFailedDetails', 'Item request failed. Check browser logs for details.'));
                     console.error("Item request failed. Response including errors:");
                     console.error(response);
                 } else {
-                    Dashboard.alert("Item successfully requested");
+                    Dashboard.alert(HomeScreenSectionsHandler.translate('RequestSuccess', 'Item successfully requested'));
                 }
             }, function(error) {
-                Dashboard.alert("Item request failed");
+                Dashboard.alert(HomeScreenSectionsHandler.translate('RequestFailed', 'Item request failed'));
             })
         }
     };
