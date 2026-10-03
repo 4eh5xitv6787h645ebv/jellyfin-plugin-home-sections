@@ -63,6 +63,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 
 			User user = UserManager.GetUserById(payload.UserId)!;
 
+			SectionSettings? sectionSettings = HomeScreenSectionsPlugin.Instance?.Configuration.SectionSettings.FirstOrDefault(x => x.SectionId == Section);
+			bool? isPlayed = sectionSettings?.HideWatchedItems == true ? false : null;
+
 			IEnumerable<Playlist> playlists = PlaylistManager.GetPlaylists(user.Id);
 			Playlist? myListPlaylist = playlists.FirstOrDefault(x => x.Name == "My List");
 
@@ -72,7 +75,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 			{
 				results.AddRange(myListPlaylist.GetChildren(user, true, new InternalItemsQuery(user)
 				{
-					IsAiring = true
+					IsAiring = true,
+					IsPlayed = isPlayed
 				}));
 			}
 
@@ -92,6 +96,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 				Limit = Limit ?? 1,
 				OriginalPayload = OriginalPayload,
 				ViewMode = SectionViewMode.Landscape,
+				AllowHideWatched = true,
 				PluginConfigurationOptions = (this as IHomeScreenSection).GetPluginConfigurationOptions().ToArray()
 			};
 		}
