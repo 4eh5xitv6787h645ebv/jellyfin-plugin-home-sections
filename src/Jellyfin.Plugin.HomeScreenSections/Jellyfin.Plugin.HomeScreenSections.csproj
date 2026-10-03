@@ -20,7 +20,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="$([System.IO.File]::Exists('$(MsBuildThisFileDirectory)..\..\.git'))">
         <GitHeadLocation>$([System.IO.File]::ReadAllText('$(MsBuildThisFileDirectory)..\..\.git').Replace('gitdir: ', '').Trim())</GitHeadLocation>
-        <GitBranch>$([System.IO.File]::ReadAllText('$(MsBuildThisFileDirectory)..\..\$(GitHeadLocation)\HEAD').Replace('ref: refs/heads/', '').Trim())</GitBranch>
+        <GitBranch>$([System.IO.File]::ReadAllText($([System.IO.Path]::Combine('$(MsBuildThisFileDirectory)..\..', '$(GitHeadLocation)', 'HEAD'))).Replace('ref: refs/heads/', '').Trim())</GitBranch>
     </PropertyGroup>
     
     <ItemGroup>
