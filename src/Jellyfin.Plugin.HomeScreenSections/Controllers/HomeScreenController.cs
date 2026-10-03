@@ -34,6 +34,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
     [Route("[controller]")]
     public class HomeScreenController : ControllerBase
     {
+        private const int c_seerrTimeoutSeconds = 15;
+        private const int c_seerrMessageLimit = 200;
+        private const int c_seerrErrorBodyLimit = 8192;
         private readonly IHomeScreenManager m_homeScreenManager;
         private readonly IDisplayPreferencesManager m_displayPreferencesManager;
         private readonly IServerApplicationHost m_serverApplicationHost;
@@ -321,61 +324,144 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
 
         [HttpPost("DiscoverRequest")]
         [Authorize]
-        public async Task<ActionResult> MakeDiscoverRequest([FromServices] IUserManager userManager, [FromBody] DiscoverRequestPayload payload)
+        public async Task<ActionResult> MakeDiscoverRequest([FromServices] IUserManager userManager, [FromServices] IHttpClientFactory httpClientFactory, [FromBody] DiscoverRequestPayload payload)
         {
             string? userIdString = User.Claims.FirstOrDefault(x => x.Type.Equals("Jellyfin-UserId", StringComparison.OrdinalIgnoreCase))?.Value;
-            Guid userId = string.IsNullOrEmpty(userIdString) ? Guid.Empty : Guid.Parse(userIdString);
-
-            if (userId == Guid.Empty)
+            if (!Guid.TryParse(userIdString, out Guid userId) || userId == Guid.Empty)
             {
                 return Forbid();
             }
-            
+
+            if ((payload.MediaType != "movie" && payload.MediaType != "tv") || payload.MediaId <= 0)
+            {
+                return BadRequest(new { message = "MediaType must be movie or tv and MediaId must be positive." });
+            }
+
             User? user = userManager.GetUserById(userId);
+            if (user == null)
+            {
+                return NotFound(new { message = "The Jellyfin user was not found." });
+            }
+
             string? jellyseerrUrl = HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrUrl;
-
-            if (jellyseerrUrl == null)
+            string? apiKey = HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrApiKey;
+            if (!Uri.TryCreate(jellyseerrUrl, UriKind.Absolute, out Uri? baseUri) ||
+                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps) || string.IsNullOrWhiteSpace(apiKey))
             {
-                return BadRequest();
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Seerr is not configured." });
             }
-            
-            HttpClient client = new HttpClient();
-            client.BaseAddress = new Uri(jellyseerrUrl);
-            client.DefaultRequestHeaders.Add("X-Api-Key", HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrApiKey);
-            
-            HttpResponseMessage usersResponse = client.GetAsync($"/api/v1/user?q={user.Username}").GetAwaiter().GetResult();
-            string userResponseRaw = usersResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            int? jellyseerrUserId = JObject.Parse(userResponseRaw).Value<JArray>("results")!.OfType<JObject>().FirstOrDefault(x => x.Value<string>("jellyfinUsername") == user.Username)?.Value<int>("id");
 
-            if (jellyseerrUserId == null)
-            {
-                return BadRequest();
-            }
-            
-            client.DefaultRequestHeaders.Add("X-Api-User", jellyseerrUserId.ToString());
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+            deadline.CancelAfter(TimeSpan.FromSeconds(c_seerrTimeoutSeconds));
+            CancellationToken cancellationToken = deadline.Token;
 
-            HttpResponseMessage requestResponse;
-            if (payload.MediaType == "tv")
+            try
             {
-                requestResponse = await client.PostAsync("/api/v1/request", JsonContent.Create(new JellyseerrTvShowRequestPayload
+                using HttpClient client = httpClientFactory.CreateClient();
+                client.BaseAddress = baseUri;
+                client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+
+                using HttpResponseMessage usersResponse = await client.GetAsync($"/api/v1/user?q={Uri.EscapeDataString(user.Username)}", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!usersResponse.IsSuccessStatusCode)
                 {
-                    MediaId = payload.MediaId,
-                    MediaType = payload.MediaType,
-                    Seasons = "all"
-                }));
-            }
-            else
-            {
-                requestResponse = await client.PostAsync("/api/v1/request", JsonContent.Create(new JellyseerrRequestPayload
+                    return StatusCode(StatusCodes.Status502BadGateway, new { message = "Seerr user lookup failed. Check the server's API key and permissions." });
+                }
+
+                string userResponseRaw = await usersResponse.Content.ReadAsStringAsync(cancellationToken);
+                if (JToken.Parse(userResponseRaw) is not JObject users || users["results"] is not JArray results)
                 {
-                    MediaId = payload.MediaId,
-                    MediaType = payload.MediaType
-                }));
+                    return StatusCode(StatusCodes.Status502BadGateway, new { message = "Seerr returned an invalid user response." });
+                }
+
+                JObject? seerrUser = results.OfType<JObject>()
+                    .FirstOrDefault(x => x["jellyfinUsername"]?.Type == JTokenType.String && x.Value<string>("jellyfinUsername") == user.Username);
+                if (seerrUser == null)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "The Jellyfin user is not linked in Seerr." });
+                }
+
+                if (!int.TryParse(seerrUser["id"]?.ToString(), out int jellyseerrUserId) || jellyseerrUserId <= 0)
+                {
+                    return StatusCode(StatusCodes.Status502BadGateway, new { message = "Seerr returned an invalid user ID." });
+                }
+
+                client.DefaultRequestHeaders.Add("X-Api-User", jellyseerrUserId.ToString());
+
+                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/request");
+                if (payload.MediaType == "tv")
+                {
+                    request.Content = JsonContent.Create(new JellyseerrTvShowRequestPayload
+                    {
+                        MediaId = payload.MediaId,
+                        MediaType = payload.MediaType,
+                        Seasons = "all"
+                    });
+                }
+                else
+                {
+                    request.Content = JsonContent.Create(new JellyseerrRequestPayload
+                    {
+                        MediaId = payload.MediaId,
+                        MediaType = payload.MediaType
+                    });
+                }
+
+                using HttpResponseMessage requestResponse = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!requestResponse.IsSuccessStatusCode)
+                {
+                    return await SeerrError(requestResponse, cancellationToken);
+                }
+
+                string responseContent = await requestResponse.Content.ReadAsStringAsync(cancellationToken);
+                return Content(responseContent, requestResponse.Content.Headers.ContentType?.MediaType ?? "application/json");
             }
-            
-            string responseContent = await requestResponse.Content.ReadAsStringAsync();
-            
-            return Content(responseContent, requestResponse.Content.Headers.ContentType.MediaType);
+            catch (HttpRequestException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { message = "Could not reach Seerr." });
+            }
+            catch (OperationCanceledException) when (!HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "The Seerr request timed out." });
+            }
+            catch (JsonReaderException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { message = "Seerr returned invalid JSON." });
+            }
+        }
+
+        private async Task<ActionResult> SeerrError(HttpResponseMessage response, CancellationToken cancellationToken)
+        {
+            int upstreamStatus = (int)response.StatusCode;
+            if (upstreamStatus == StatusCodes.Status401Unauthorized || upstreamStatus == StatusCodes.Status407ProxyAuthenticationRequired)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { message = "Seerr rejected the server's API key or proxy authentication." });
+            }
+
+            int status = upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : StatusCodes.Status502BadGateway;
+            string message = $"Seerr returned HTTP {upstreamStatus}.";
+            try
+            {
+                await response.Content.LoadIntoBufferAsync(c_seerrErrorBodyLimit, cancellationToken);
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (JToken.Parse(content) is JObject error && error["message"]?.Type == JTokenType.String)
+                {
+                    string? upstreamMessage = error.Value<string>("message");
+                    if (!string.IsNullOrWhiteSpace(upstreamMessage))
+                    {
+                        message = upstreamMessage.Length > c_seerrMessageLimit ? upstreamMessage.Substring(0, c_seerrMessageLimit) : upstreamMessage;
+                    }
+                }
+            }
+            catch (JsonReaderException)
+            {
+                // Non-JSON error bodies must not be forwarded to the client.
+            }
+            catch (HttpRequestException)
+            {
+                // Keep the status and fallback message if the error body exceeds the buffer limit.
+            }
+
+            return StatusCode(status, new { message });
         }
     }
 }
