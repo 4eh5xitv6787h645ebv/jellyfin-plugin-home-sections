@@ -32,7 +32,26 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming
 
         protected override RadarrCalendarDto[] GetCalendarItems(DateTime startDate, DateTime endDate)
         {
-            return ArrApiService.GetArrCalendarAsync<RadarrCalendarDto>(ArrServiceType.Radarr, startDate, endDate).GetAwaiter().GetResult() ?? [];
+            // ArrApiService sends UTC timestamps with whole-second precision.
+            startDate = startDate.AddTicks(-(startDate.Ticks % TimeSpan.TicksPerSecond));
+            endDate = endDate.AddTicks(-(endDate.Ticks % TimeSpan.TicksPerSecond));
+            RadarrCalendarDto[] items = ArrApiService.GetArrCalendarAsync<RadarrCalendarDto>(ArrServiceType.Radarr, startDate, endDate).GetAwaiter().GetResult() ?? [];
+
+            // Radarr includes a movie when any release is in range. Keep only those dates so
+            // filtering, sorting and rendering all select the same enabled release in this window.
+            foreach (RadarrCalendarDto item in items)
+            {
+                item.InCinemas = GetReleaseDateInWindow(item.InCinemas, startDate, endDate);
+                item.PhysicalRelease = GetReleaseDateInWindow(item.PhysicalRelease, startDate, endDate);
+                item.DigitalRelease = GetReleaseDateInWindow(item.DigitalRelease, startDate, endDate);
+            }
+
+            return items;
+        }
+
+        private static DateTime? GetReleaseDateInWindow(DateTime? releaseDate, DateTime startDate, DateTime endDate)
+        {
+            return releaseDate >= startDate && releaseDate <= endDate ? releaseDate : null;
         }
 
         private DateTime GetEarliestReleaseDate(RadarrCalendarDto item, PluginConfiguration config)
