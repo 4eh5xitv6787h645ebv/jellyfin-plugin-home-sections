@@ -86,6 +86,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
             int dayIncrement = 30;
             DateTime currentDate = DateTime.Now;
             DateTime stopDate = DateTime.Parse("01/01/1887"); // The first movie ever was 1888 so this should be safe, we never expect to get as far back as this but we need an escape.
+            DateTime? earliestDate = null;
             bool continueSearching = true;
 
             do
@@ -134,9 +135,18 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
                     continueSearching = false;
                 }
                 
+                if (continueSearching && !earliestDate.HasValue)
+                {
+                    earliestDate = GetEarliestPremiereDate(folders, user, isPlayed, currentDate);
+                    if (!earliestDate.HasValue)
+                    {
+                        break;
+                    }
+                }
+
                 currentDate = currentDate.Subtract(TimeSpan.FromDays(dayIncrement));
                 
-                if (currentDate < stopDate)
+                if (currentDate < stopDate || (earliestDate.HasValue && currentDate.ToUniversalTime() < earliestDate.Value))
                 {
                     break;
                 }
@@ -146,6 +156,45 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
                 i => m_dtoService.GetBaseItemDto(i, dtoOptions, user)));
         }
         
+        protected DateTime? GetEarliestPremiereDate(VirtualFolderInfo[] folders, User? user, bool? isPlayed,
+            DateTime currentDate)
+        {
+            DateTime? earliestDate = null;
+            bool isShowSection = SectionItemKind == BaseItemKind.Episode;
+            foreach (VirtualFolderInfo virtualFolder in folders)
+            {
+                BaseItem item = m_libraryManager.GetParentItem(Guid.Parse(virtualFolder.ItemId), user?.Id);
+                if (item is not Folder folder)
+                {
+                    folder = m_libraryManager.GetUserRootFolder();
+                }
+
+                DateTime? premiereDate = folder.GetItems(new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = new[] { SectionItemKind },
+                    Limit = 1,
+                    OrderBy = new[] { (ItemSortBy.PremiereDate, SortOrder.Ascending) },
+                    IsPlayed = isPlayed,
+                    IsVirtualItem = isShowSection ? false : null,
+                    ParentId = isShowSection ? folder.Id : Guid.Parse(virtualFolder.ItemId),
+                    Recursive = true,
+                    // Exclude null dates, and use physical items when choosing the bound.
+                    MinPremiereDate = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc),
+                    MaxPremiereDate = currentDate,
+                    GroupByPresentationUniqueKey = false,
+                    CollapseBoxSetItems = false,
+                    EnableTotalRecordCount = false
+                }).Items.FirstOrDefault()?.PremiereDate;
+
+                if (premiereDate.HasValue && (!earliestDate.HasValue || premiereDate.Value < earliestDate.Value))
+                {
+                    earliestDate = premiereDate;
+                }
+            }
+
+            return earliestDate;
+        }
+
         public IEnumerable<IHomeScreenSection> CreateInstances(Guid? userId, int instanceCount)
         {
             User? user = m_userManager.GetUserById(userId ?? Guid.Empty);
