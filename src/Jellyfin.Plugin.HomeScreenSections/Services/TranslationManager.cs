@@ -7,7 +7,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 {
     public class TranslationManager : ITranslationManager
     {
-        private Dictionary<string, JObject> m_translationPacks = new Dictionary<string, JObject>();
+        private readonly object m_translationPacksLock = new object();
+        private volatile Dictionary<string, JObject> m_translationPacks = new Dictionary<string, JObject>();
         private readonly ILogger<ITranslationManager> m_logger;
 
         public TranslationManager(ILogger<ITranslationManager> logger)
@@ -24,6 +25,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             string[] locJsonFiles = HomeScreenSectionsPlugin.Instance.GetType().Assembly.GetManifestResourceNames()
                 .Where(x => x.EndsWith(".json") && x.Contains("_Localization.")).ToArray();
 
+            Dictionary<string, JObject> translationPacks = new Dictionary<string, JObject>();
             foreach (string locFile in locJsonFiles)
             {
                 m_logger.LogTrace($"Loading translation file: {locFile}");
@@ -35,10 +37,10 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 
                     string key = locFile.Replace(".json", "").Split('.').Last();
 
-                    if (!m_translationPacks.ContainsKey(key))
+                    if (!translationPacks.ContainsKey(key))
                     {
-                        m_translationPacks.Add(key, JObject.Parse(reader.ReadToEnd()));
-                        m_logger.LogTrace($"Loaded translation file: {locFile} with {m_translationPacks[key].Count} keys");
+                        translationPacks.Add(key, JObject.Parse(reader.ReadToEnd()));
+                        m_logger.LogTrace($"Loaded translation file: {locFile} with {translationPacks[key].Count} keys");
                     }
                     else
                     {
@@ -46,12 +48,17 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                     }
                 }
             }
+            lock (m_translationPacksLock)
+            {
+                m_translationPacks = translationPacks;
+            }
         }
 
         public string Translate(string key, string desiredLanguage, string fallbackText, TranslationMetadata? metadata = null)
         {
             m_logger.LogTrace($"Translating key '{key}' to language '{desiredLanguage}'");
             
+            Dictionary<string, JObject> translationPacks = m_translationPacks;
             bool languageFound = false;
             string languageKey = desiredLanguage;
 
@@ -59,30 +66,34 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
             {
                 // If we don't have the language, but it has a region remove the region and just grab the language and see if we 
                 // have a blanket translation for that language.
-                if (!m_translationPacks.ContainsKey(languageKey) && languageKey.Contains("-"))
+                if (!translationPacks.ContainsKey(languageKey) && languageKey.Contains("-"))
                 {
                     m_logger.LogTrace($"Language '{languageKey}' doesn't exist, removing region and trying again");
                     languageKey = languageKey.Split("-")[0];
                 }
                 // If we don't then fallback to english so we don't get keys being sent to the client
-                else if (!m_translationPacks.ContainsKey(languageKey))
+                else if (!translationPacks.ContainsKey(languageKey))
                 {
                     m_logger.LogTrace($"Language '{languageKey}' doesn't exist, falling back to english");
+                    if (languageKey == "en")
+                    {
+                        break;
+                    }
                     languageKey = "en";
                 }
                 // If we have it then we're done.
-                else if (m_translationPacks.ContainsKey(languageKey))
+                else if (translationPacks.ContainsKey(languageKey))
                 {
                     m_logger.LogTrace($"Found translation pack for language '{languageKey}'");
                     languageFound = true;
                 }
             } while (!languageFound);
 
-            JObject translationPack = m_translationPacks[languageKey];
+            translationPacks.TryGetValue(languageKey, out JObject? translationPack);
 
-            string translatedText = "";
+            string translatedText = fallbackText;
             string fullTextKey = fallbackText.Replace(" ", "").Replace("-", "");
-            if (key != fullTextKey && translationPack.ContainsKey(fullTextKey))
+            if (key != fullTextKey && translationPack != null && translationPack.ContainsKey(fullTextKey))
             {
                 m_logger.LogTrace($"Found translation for key '{fullTextKey}' in language '{languageKey}'");
                 translatedText = translationPack.Value<string>(fullTextKey)!;
@@ -90,18 +101,18 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
                 // Since we've got a full translation we don't need the metadata
                 metadata = null;
             }
-            else if (translationPack.ContainsKey(key))
+            else if (translationPack != null && translationPack.ContainsKey(key))
             {
                 m_logger.LogTrace($"Found translation for key '{key}' in language '{languageKey}'");
                 translatedText = translationPack.Value<string>(key)!;
             }
-            else
+            else if (translationPack != null)
             {
                 m_logger.LogWarning($"No translation found for key '{key}' in language '{languageKey}', falling back to previous routes");
                 // If Libre is disabled this will be null
                 string? libreTranslateVersion = LibreTranslateHelper.TranslateAsync(fallbackText, "en", desiredLanguage).GetAwaiter().GetResult();
                 
-                translatedText = libreTranslateVersion ?? m_translationPacks["en"].Value<string>(key) ?? fallbackText;
+                translatedText = libreTranslateVersion ?? translationPacks.GetValueOrDefault("en")?.Value<string>(key) ?? fallbackText;
             }
 
             if (metadata != null)
@@ -135,32 +146,45 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 
         public void UpdateTranslationPack(string language, JObject translationPack)
         {
-            if (m_translationPacks.TryAdd(language, translationPack))
+            UpdateTranslationPacks(new Dictionary<string, JObject> { { language, translationPack } });
+        }
+
+        public void UpdateTranslationPacks(IDictionary<string, JObject> translationPacks)
+        {
+            lock (m_translationPacksLock)
             {
-                return;
-            }
-            
-            foreach (KeyValuePair<string, JToken?> keyValue in translationPack)
-            {
-                m_translationPacks[language][keyValue.Key] = keyValue.Value;
+                Dictionary<string, JObject> updatedPacks = new Dictionary<string, JObject>(m_translationPacks);
+                foreach (KeyValuePair<string, JObject> translationPack in translationPacks)
+                {
+                    JObject mergedPack = updatedPacks.TryGetValue(translationPack.Key, out JObject? existingPack)
+                        ? (JObject)existingPack.DeepClone()
+                        : new JObject();
+                    foreach (KeyValuePair<string, JToken?> keyValue in translationPack.Value)
+                    {
+                        mergedPack[keyValue.Key] = keyValue.Value?.DeepClone();
+                    }
+                    updatedPacks[translationPack.Key] = mergedPack;
+                }
+                m_translationPacks = updatedPacks;
             }
         }
 
         public IDictionary<string, string>? GetTranslationPack(string language)
         {
+            Dictionary<string, JObject> translationPacks = m_translationPacks;
             string languageKey = language;
 
-            if (!m_translationPacks.ContainsKey(languageKey) && languageKey.Contains("-"))
+            if (!translationPacks.ContainsKey(languageKey) && languageKey.Contains("-"))
             {
                 languageKey = languageKey.Split("-")[0];
             }
 
-            if (!m_translationPacks.ContainsKey(languageKey))
+            if (!translationPacks.ContainsKey(languageKey))
             {
                 languageKey = "en";
             }
 
-            if (m_translationPacks.TryGetValue(languageKey, out JObject? pack))
+            if (translationPacks.TryGetValue(languageKey, out JObject? pack))
             {
                 return pack.ToObject<Dictionary<string, string>>();
             }
