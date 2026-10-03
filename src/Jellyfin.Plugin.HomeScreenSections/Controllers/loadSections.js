@@ -97,6 +97,17 @@
         }
         
         return function(items) {
+            if (additionalSettings.ViewMode === 'Portrait' && !useEpisodeImages) {
+                items = items.map(function(item) {
+                    if (item.Type === 'Episode' && ((item.SeriesPrimaryImageTag && item.SeriesId) || (item.ParentPrimaryImageTag && item.ParentPrimaryImageItemId))) {
+                        return Object.assign({}, item, {
+                            ImageTags: Object.assign({}, item.ImageTags, { Primary: null })
+                        });
+                    }
+                    return item;
+                });
+            }
+
             return cardBuilder.getCardsHtml({
                 items: items,
                 preferThumb: additionalSettings.ViewMode === 'Portrait' ? null : 'auto',
