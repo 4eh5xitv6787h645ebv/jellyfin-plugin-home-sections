@@ -42,7 +42,19 @@ if (typeof HomeScreenSectionsHandler == 'undefined') {
                     Dashboard.alert("Item successfully requested");
                 }
             }, function(error) {
-                Dashboard.alert("Item request failed");
+                if (error && typeof error.json === 'function') {
+                    error.json().then(function(response) {
+                        if (response && typeof response.message === 'string' && response.message) {
+                            Dashboard.alert("Item request failed: " + response.message.substring(0, 200));
+                        } else {
+                            Dashboard.alert("Item request failed");
+                        }
+                    }, function() {
+                        Dashboard.alert("Item request failed");
+                    });
+                } else {
+                    Dashboard.alert("Item request failed");
+                }
             })
         }
     };
