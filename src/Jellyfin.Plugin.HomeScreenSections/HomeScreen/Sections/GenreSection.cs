@@ -147,13 +147,13 @@ public class GenreSection : IHomeScreenSection
             }
             else
             {
-                randomScore = rnd.Next(0, userGenreScores.Length);
-                selectedGenre = userGenreScores[randomScore].Genre;
+                randomScore = rnd.Next(0, availableGenres.Length);
+                selectedGenre = availableGenres[randomScore].Genre;
             }
 
             if (totalScore > 0)
             {
-                foreach ((string Genre, int Score) userGenre in userGenreScores)
+                foreach ((string Genre, int Score) userGenre in availableGenres)
                 {
                     randomScore -= userGenre.Score;
 
@@ -166,7 +166,7 @@ public class GenreSection : IHomeScreenSection
 
                 if (selectedGenre == null)
                 {
-                    selectedGenre = userGenreScores.Last().Genre;
+                    selectedGenre = availableGenres.Last().Genre;
                 }
             }
 
