@@ -1425,7 +1425,7 @@
             }
 
             function loadLibraries() {
-                window.ApiClient.getVirtualFolders().then(function (result) {
+                return window.ApiClient.getVirtualFolders().then(function (result) {
                     const moviesSelect = document.querySelector('#defaultMoviesLibrary');
                     const tvShowsSelect = document.querySelector('#defaultTVShowsLibrary');
                     const musicSelect = document.querySelector('#defaultMusicLibrary');
@@ -1523,7 +1523,7 @@
                     .finally(() => Dashboard.hideLoadingMsg());
             }
 
-            function loadConfig() {
+            function loadConfig(librariesPromise) {
                 Dashboard.showLoadingMsg();
                 window.ApiClient.getPluginConfiguration(pluginId)
                     .then(function (config) {
@@ -1547,12 +1547,12 @@
 
                         document.querySelector('#globalStreamyfinHomeOverride').checked = config.OverrideStreamyfinHome;
                         document.querySelector('#globalDeveloperMode').checked = config.DeveloperMode;
-                        document.querySelector('[data-id=txtCacheTimeoutSeconds]').value = config.CacheTimeoutSeconds || 86400;
+                        document.querySelector('[data-id=txtCacheTimeoutSeconds]').value = config.CacheTimeoutSeconds ?? 86400;
                         document.querySelector('[data-id=txtMaxImageCacheEntries]').value = config.MaxImageCacheEntries || 10000;
                         document.querySelector('[data-id=txtMaxImageWidth]').value = config.MaxImageWidth || 600;
                         document.querySelector('[data-id=txtImageJpegQuality]').value = config.ImageJpegQuality || 85;
 
-                        setTimeout(function() {
+                        librariesPromise.then(function () {
                             if (config.DefaultMoviesLibraryId) {
                                 document.querySelector('#defaultMoviesLibrary').value = config.DefaultMoviesLibraryId;
                             }
@@ -1568,7 +1568,7 @@
                             if (config.DefaultMusicVideosLibraryId) {
                                 document.querySelector('#defaultMusicVideosLibrary').value = config.DefaultMusicVideosLibraryId;
                             }
-                        }, 500);
+                        });
 
                         window.ApiClient.ajax({
                             url: ApiClient.getUrl('ModularHomeViews/Sections') + '?language=' + encodeURIComponent(uiLanguage),
@@ -1620,8 +1620,8 @@
             document.querySelector('#homeScreenSectionsConfigurationPage').addEventListener("pageshow", function () {
                 injectConfigStylesheet();
                 setupTabs();
-                loadLibraries();
-                loadConfig();
+                const librariesPromise = loadLibraries();
+                loadConfig(librariesPromise);
                 translatePage();
                 document.querySelector('#btnSaveConfigGlobal').addEventListener("click", saveConfig);
                 document.querySelector('#btnSaveConfigSections').addEventListener("click", saveConfig);
