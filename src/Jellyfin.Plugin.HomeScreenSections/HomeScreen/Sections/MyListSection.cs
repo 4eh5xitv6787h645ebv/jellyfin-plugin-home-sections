@@ -1,4 +1,5 @@
 ﻿using Jellyfin.Plugin.HomeScreenSections.Configuration;
+using Jellyfin.Plugin.HomeScreenSections.Helpers;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model.Dto;
 using MediaBrowser.Controller.Dto;
@@ -17,6 +18,13 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 		public string? Section => "MyList";
 
 		public string? DisplayText { get; set; } = "My List";
+
+		public TranslationMetadata? TranslationMetadata => string.IsNullOrWhiteSpace(CustomTitle) ? null : new TranslationMetadata
+		{
+			Type = TranslationType.None
+		};
+
+		private string? CustomTitle => HomeScreenSectionsPlugin.Instance.Configuration.SectionSettings.FirstOrDefault(x => x.SectionId == Section)?.GetAdminConfig<string>("customTitle");
 
 		public int? Limit => 1;
 
@@ -37,6 +45,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 			UserManager = userManager;
 			DtoService = dtoService;
 			PlaylistManager = playlistManager;
+		}
+
+		public IEnumerable<PluginConfigurationOption> GetPluginConfigurationOptions()
+		{
+			yield return PluginConfigurationHelper.CreateTextBox("customTitle", "Custom title (blank uses the translated default)",
+				"Change the display title only. The playlist must still be named My List.", "AdminMyListCustomTitle");
 		}
 
 		public IEnumerable<IHomeScreenSection> CreateInstances(Guid? userId, int instanceCount)
@@ -83,10 +97,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
 		
 		public HomeScreenSectionInfo GetInfo()
 		{
+			string? customTitle = CustomTitle;
+
 			return new HomeScreenSectionInfo
 			{
 				Section = Section,
-				DisplayText = DisplayText,
+				DisplayText = string.IsNullOrWhiteSpace(customTitle) ? DisplayText : customTitle,
 				AdditionalData = AdditionalData,
 				Route = Route,
 				Limit = Limit ?? 1,

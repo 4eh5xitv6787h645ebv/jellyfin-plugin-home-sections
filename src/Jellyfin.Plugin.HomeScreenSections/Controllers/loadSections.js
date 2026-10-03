@@ -45,6 +45,10 @@
         return;
     }
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function getHomeScreenSectionFetchFn(serverId, sectionInfo, serverConnections, _userSettings) {
         return function() {
             var __userSettings = _userSettings;
@@ -293,13 +297,13 @@
 
                 html += '<a is="emby-linkbutton" href="' + route + '" class="button-flat button-flat-mini sectionTitleTextButton">';
                 html += '<h2 class="sectionTitle sectionTitle-cards">';
-                html += sectionInfo.DisplayText;
+                html += escapeHtml(sectionInfo.DisplayText);
                 html += "</h2>";
                 html += '<span class="material-icons chevron_right" aria-hidden="true"></span>';
                 html += "</a>";
             } else {
                 html += '<h2 class="sectionTitle sectionTitle-cards">';
-                html += sectionInfo.DisplayText;
+                html += escapeHtml(sectionInfo.DisplayText);
                 html += "</h2>";
             }
             

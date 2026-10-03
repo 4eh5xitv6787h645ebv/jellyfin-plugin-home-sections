@@ -50,6 +50,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services
 
         public string Translate(string key, string desiredLanguage, string fallbackText, TranslationMetadata? metadata = null)
         {
+            if (metadata?.Type == TranslationType.None)
+            {
+                return fallbackText;
+            }
+
             m_logger.LogTrace($"Translating key '{key}' to language '{desiredLanguage}'");
             
             bool languageFound = false;

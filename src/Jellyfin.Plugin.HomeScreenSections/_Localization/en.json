@@ -225,6 +225,9 @@
   "AdminPerSectionSetting_Configuration": "Configuration",
   "AdminPerSectionSetting_Value": "Value",
 
+  "AdminMyListCustomTitle": "Custom title (blank uses the translated default)",
+  "AdminMyListCustomTitle_Desc": "Change the display title only. The playlist must still be named My List.",
+
   "AdminRecentlyAddedInLibraryGroupEpisodes": "Group Episodes to Seasons/Series",
   "AdminRecentlyAddedInLibraryGroupEpisodes_Desc": "Do you want to group newly added episodes into seasons/series? (Note: this will make the section slower to load)",
   
