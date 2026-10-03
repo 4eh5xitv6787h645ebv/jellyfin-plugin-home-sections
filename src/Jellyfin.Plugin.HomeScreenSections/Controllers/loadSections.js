@@ -91,11 +91,6 @@
             }
         }
 
-        if (additionalSettings.ViewMode === 'Small') {
-            // Currently Small is only supported by MyMedia so we're going to change this to Landscape to avoid any issues
-            additionalSettings.ViewMode = 'Landscape';
-        }
-        
         return function(items) {
             return cardBuilder.getCardsHtml({
                 items: items,
@@ -269,6 +264,10 @@
     }
     
     function loadHomeSection(page, apiClient, user, userSettings, sectionInfo, options) {
+        if (sectionInfo.ViewMode === 'Small' && sectionInfo.Section !== 'MyMedia') {
+            sectionInfo.ViewMode = 'Landscape';
+        }
+
         var sectionClass = getSectionClass(sectionInfo);
         var appRouterParent = {{appRouterParent_hook}};
         console.log("Loading section: ." + sectionClass + ", could also be .section" + options.sectionIndex);
@@ -357,7 +356,7 @@
                     getShapeFn = getBackdropShape;
                 }
                 
-                var imageHelper = b.Ay;
+                var imageHelper = {{imagehelper_hook}};
                 
                 itemsContainer.getItemsHtml = getHomeScreenSectionItemsHtmlFn(userSettings.useEpisodeImagesInNextUpAndResume(), options.enableOverflow, sectionInfo.Section, cardBuilder, getShapeFn, imageHelper, appRouterParent.appRouter, cardSettings);
                 itemsContainer.parentContainer = elem;

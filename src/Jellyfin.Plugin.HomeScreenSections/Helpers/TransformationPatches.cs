@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Helpers
             if (JellyfinVersionAttribute.GetVersion()?.StartsWith("10.10.7") ?? false)
             {
                 replacementText = replacementText.Replace("{{cardbuilder_hook}}", "h.default");
+                replacementText = replacementText.Replace("{{imagehelper_hook}}", "b.Ay");
                 replacementText = replacementText.Replace("{{appRouterParent_hook}}", "p");
                 replacementText = replacementText.Replace("{{shapebuilder_hook}}", "y");
                 replacementText = replacementText.Replace("{{layoutmanager_hook}}", "n"); // TODO: lookup the first "assigned" variable after `var`
@@ -30,6 +31,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Helpers
             else if (JellyfinVersionAttribute.GetVersion()?.StartsWith("10.11") ?? false)
             {
                 replacementText = replacementText.Replace("{{cardbuilder_hook}}", "u.default");
+                replacementText = replacementText.Replace("{{imagehelper_hook}}", "b.Ay");
                 replacementText = replacementText.Replace("{{appRouterParent_hook}}", "p");
                 replacementText = replacementText.Replace("{{shapebuilder_hook}}", "y");
                 replacementText = replacementText.Replace("{{layoutmanager_hook}}", "n"); // TODO: lookup the first "assigned" variable after `var`
@@ -37,6 +39,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Helpers
             else if (JellyfinVersionAttribute.GetVersion()?.StartsWith("12.") ?? false)
             {
                 replacementText = replacementText.Replace("{{cardbuilder_hook}}", "p.Ay");
+                replacementText = replacementText.Replace("{{imagehelper_hook}}", "A.Ay");
                 replacementText = replacementText.Replace("{{appRouterParent_hook}}", "T");
                 replacementText = replacementText.Replace("{{shapebuilder_hook}}", "I");
                 replacementText = replacementText.Replace("{{layoutmanager_hook}}", "r(46782)"); // TODO: lookup the first "assigned" variable after `var`
