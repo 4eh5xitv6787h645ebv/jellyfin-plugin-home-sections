@@ -285,13 +285,24 @@
                     route = appRouterParent.appRouter.getRouteUrl(sectionInfo.OriginalPayload, {
                         serverId: apiClient.serverId()
                     });
+                } else if (typeof sectionInfo.Route === 'string' && sectionInfo.Route !== 'nextup') {
+                    route = sectionInfo.Route;
+                    if (route.indexOf('/') === 0 && route.indexOf('//') !== 0) {
+                        route = apiClient.getUrl(route.substring(1));
+                    } else if (route.indexOf('#') !== 0 && route.indexOf('/') !== 0 && route.indexOf('://') === -1) {
+                        route = '#/' + route;
+                    }
+                    if (route.indexOf('#') === 0 && !/[?&]serverId=/.test(route)) {
+                        route += (route.indexOf('?') === -1 ? '?' : '&') + 'serverId=' + encodeURIComponent(apiClient.serverId());
+                    }
                 } else {
                     route = appRouterParent.appRouter.getRouteUrl(sectionInfo.Route, {
                         serverId: apiClient.serverId()
                     })
                 }
 
-                html += '<a is="emby-linkbutton" href="' + route + '" class="button-flat button-flat-mini sectionTitleTextButton">';
+                var target = route.indexOf('#') === 0 ? '' : ' target="_self"';
+                html += '<a is="emby-linkbutton" href="' + route + '"' + target + ' class="button-flat button-flat-mini sectionTitleTextButton">';
                 html += '<h2 class="sectionTitle sectionTitle-cards">';
                 html += sectionInfo.DisplayText;
                 html += "</h2>";
